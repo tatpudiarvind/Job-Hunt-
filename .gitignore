@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+.vs/
+node_modules/
+.angular/
+dist/
+coverage/
+*.user
+*.suo
+appsettings.*.local.json
+.env
+secrets.json
+
+src/ArvindJobHunter.Api/data/
+src/ArvindJobHunter.Api/keys/
+*.corrupt.*.json
