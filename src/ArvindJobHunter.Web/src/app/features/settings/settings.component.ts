@@ -11,7 +11,8 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatRadioModule } from '@angular/material/radio';
 import { ApiService } from '../../core/api.service';
-import { GoogleStatus, Settings } from '../../core/models';
+import { GoogleOAuthSettings, GoogleStatus, Settings } from '../../core/models';
+import { SettingsStateService } from '../../core/settings-state.service';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
@@ -31,7 +32,12 @@ import { NotifyService } from '../../shared/notify.service';
       @if (settings(); as s) {
         <div class="grid-2">
           <section class="card">
-            <div class="card-title"><mat-icon class="material-symbols-rounded">tune</mat-icon>Execution mode</div>
+            <div class="card-title between">
+              <span class="row gap-sm"><mat-icon class="material-symbols-rounded">tune</mat-icon>Execution mode & AI</span>
+              <button mat-icon-button type="button" matTooltip="How to configure an LLM provider" (click)="llmHelp.set(!llmHelp())" aria-label="LLM setup help">
+                <mat-icon class="material-symbols-rounded">help</mat-icon>
+              </button>
+            </div>
             <form class="stack" (ngSubmit)="save()">
               <mat-radio-group class="modes" name="mode" [(ngModel)]="form.mode">
                 <label class="mode" [class.selected]="form.mode === 'DEMO'">
@@ -48,13 +54,59 @@ import { NotifyService } from '../../shared/notify.service';
                 </label>
               </mat-radio-group>
 
+              @if (llmHelp()) {
+                <div class="alert info">
+                  <mat-icon class="material-symbols-rounded">lightbulb</mat-icon>
+                  <div>
+                    <b>LLM setup help</b>
+                    <div class="muted small mt-xs">Use <b>Demo</b> for an offline deterministic experience. Use <b>OpenAI-compatible</b> for OpenAI, local gateways, or self-hosted endpoints that expose a <span class="mono">/v1/chat/completions</span> API.</div>
+                    <div class="muted small mt-xs">Typical values: OpenAI base URL <span class="mono">https://api.openai.com/v1/</span>, Ollama/OpenWebUI-style proxies often expose a similar <span class="mono">/v1/</span> endpoint, and the model should match the provider model id you want to use.</div>
+                    <div class="muted small mt-xs">These settings are saved locally for this application.</div>
+                  </div>
+                </div>
+              }
+
               <mat-form-field appearance="outline" subscriptSizing="dynamic">
                 <mat-label>LLM provider</mat-label>
-                <mat-select name="llm" [(ngModel)]="form.llmProvider">
+                <mat-select name="llmProvider" [(ngModel)]="form.llmProvider">
                   <mat-option value="Demo">Demo (offline, deterministic)</mat-option>
-                  <mat-option value="OpenAI" [disabled]="!s.openAiConfigured">OpenAI{{ s.openAiConfigured ? '' : ' — API key not configured' }}</mat-option>
+                  <mat-option value="OpenAI">OpenAI-compatible API</mat-option>
                 </mat-select>
               </mat-form-field>
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Provider name</mat-label>
+                <input matInput name="llmDisplayName" [(ngModel)]="form.llmDisplayName" placeholder="OpenAI, Azure OpenAI, Ollama gateway..." required />
+                <mat-hint>Friendly name shown in the header and activity views.</mat-hint>
+              </mat-form-field>
+
+              @if (form.llmProvider === 'OpenAI') {
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Base URL</mat-label>
+                  <input matInput name="llmBaseUrl" [(ngModel)]="form.llmBaseUrl" placeholder="https://api.openai.com/v1/" required />
+                  <mat-hint>Must point to an OpenAI-compatible API root.</mat-hint>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>API key</mat-label>
+                  <input matInput name="llmApiKey" [type]="showLlmApiKey() ? 'text' : 'password'" [(ngModel)]="form.llmApiKey" autocomplete="off" />
+                  <button mat-icon-button matSuffix type="button" (click)="showLlmApiKey.set(!showLlmApiKey())" [attr.aria-label]="showLlmApiKey() ? 'Hide API key' : 'Show API key'">
+                    <mat-icon class="material-symbols-rounded">{{ showLlmApiKey() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                  </button>
+                  <mat-hint>{{ s.llmConfigured ? 'Leave blank to keep the saved key, or enter a new one to replace it.' : 'Required for OpenAI-compatible providers.' }}</mat-hint>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Model</mat-label>
+                  <input matInput name="llmModel" [(ngModel)]="form.llmModel" placeholder="gpt-4o-mini" required />
+                  <mat-hint>Example: gpt-4o-mini, gpt-4.1-mini, llama3.1:8b, mistral-small.</mat-hint>
+                </mat-form-field>
+              } @else {
+                <div class="alert info compact">
+                  <mat-icon class="material-symbols-rounded">memory</mat-icon>
+                  <span>Demo provider is built in and does not need a base URL, API key, or model configuration.</span>
+                </div>
+              }
 
               <div class="row between">
                 <span class="muted small mono" matTooltip="Data directory">{{ s.dataDirectory }}</span>
@@ -103,18 +155,54 @@ import { NotifyService } from '../../shared/notify.service';
 
           <div class="stack">
             <section class="card">
-              <div class="card-title"><mat-icon class="material-symbols-rounded">mail</mat-icon>Google / Gmail</div>
+              <div class="card-title between">
+                <span class="row"><mat-icon class="material-symbols-rounded">mail</mat-icon>Google / Gmail</span>
+                <button mat-icon-button type="button" matTooltip="How to get Google OAuth details" (click)="googleHelp.set(!googleHelp())" aria-label="Google OAuth help">
+                  <mat-icon class="material-symbols-rounded">help</mat-icon>
+                </button>
+              </div>
+              @if (googleHelp()) {
+                <div class="alert info help-card">
+                  <mat-icon class="material-symbols-rounded">help</mat-icon>
+                  <span>
+                    1. Go to Google Cloud Console. 2. Create or select a project. 3. Enable the Gmail API. 4. Create OAuth 2.0 Client ID credentials. 5. Add <span class="mono">http://localhost:5228/api/integrations/google/callback</span> as an authorized redirect URI. 6. Copy the Client ID and Client Secret here, then save and click Connect Google.
+                  </span>
+                </div>
+              }
               @if (google(); as g) {
                 @if (!g.configured) {
-                  <div class="alert warn"><mat-icon class="material-symbols-rounded">info</mat-icon><span>Google OAuth client is not configured in the API's appsettings. Gmail actions are unavailable.</span></div>
-                } @else if (g.connected) {
+                  <div class="alert warn"><mat-icon class="material-symbols-rounded">info</mat-icon><span>Gmail actions are unavailable because Google OAuth is not configured yet. Fill in the fields below and save.</span></div>
+                }
+                <form class="stack mt" (ngSubmit)="saveGoogleOAuth()">
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                    <mat-label>Google Client ID</mat-label>
+                    <input matInput name="googleClientId" [(ngModel)]="googleForm.clientId" placeholder="YOUR_GOOGLE_OAUTH_CLIENT_ID" required />
+                  </mat-form-field>
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                    <mat-label>Google Client Secret</mat-label>
+                    <input matInput name="googleClientSecret" [type]="showGoogleSecret() ? 'text' : 'password'" [(ngModel)]="googleForm.clientSecret" placeholder="YOUR_GOOGLE_OAUTH_CLIENT_SECRET" required />
+                    <button mat-icon-button matSuffix type="button" (click)="showGoogleSecret.set(!showGoogleSecret())" [attr.aria-label]="showGoogleSecret() ? 'Hide client secret' : 'Show client secret'">
+                      <mat-icon class="material-symbols-rounded">{{ showGoogleSecret() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                    </button>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                    <mat-label>Redirect URI</mat-label>
+                    <input matInput name="googleRedirectUri" [(ngModel)]="googleForm.redirectUri" placeholder="http://localhost:5228/api/integrations/google/callback" required />
+                  </mat-form-field>
                   <div class="row between">
+                    <span class="muted small">Saved values are written to the API appsettings.json file.</span>
+                    <button mat-flat-button color="primary" type="submit" [disabled]="busy()">Save Google settings</button>
+                  </div>
+                </form>
+
+                @if (g.connected) {
+                  <div class="row between mt">
                     <div class="row"><mat-icon class="material-symbols-rounded ok">check_circle</mat-icon><span>Connected{{ g.accountEmail ? ' as ' + g.accountEmail : '' }}</span></div>
                     <button mat-stroked-button [disabled]="busy()" (click)="revoke()">Disconnect</button>
                   </div>
                 } @else {
-                  <p class="muted small">Not connected. Connecting grants draft/send access, used only after you approve each individual email.</p>
-                  <div class="row end mt"><button mat-flat-button color="primary" [disabled]="busy()" (click)="connect()"><mat-icon class="material-symbols-rounded">link</mat-icon>Connect Google</button></div>
+                  <p class="muted small mt">Not connected. Connecting grants draft/send access, used only after you approve each individual email.</p>
+                  <div class="row end mt"><button mat-flat-button color="primary" [disabled]="busy() || !googleConfigured()" (click)="connect()"><mat-icon class="material-symbols-rounded">link</mat-icon>Connect Google</button></div>
                 }
               }
             </section>
@@ -142,8 +230,13 @@ import { NotifyService } from '../../shared/notify.service';
     .mode:hover { background: #f7f9fc; }
     .mode.selected { border-color: var(--ajh-primary); background: var(--ajh-primary-soft); }
     .mode > div { display: grid; gap: .2rem; padding-top: .55rem; }
+    .card-title.between { justify-content: space-between; }
+    .gap-sm { gap: .35rem; }
+    .mt-xs { margin-top: .35rem; }
     .ok { color: var(--ajh-success); }
     .restore { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+    .help-card { margin-top: .5rem; }
+    .alert.compact { padding: .7rem .85rem; }
     .resume-status { display: flex; gap: .75rem; align-items: center; padding: .75rem 1rem; border-radius: 10px; }
     .resume-status.ok { background: var(--ajh-success-soft); color: var(--ajh-success); }
     .resume-status.missing { background: var(--ajh-warn-soft); color: var(--ajh-warn); }
@@ -158,12 +251,19 @@ import { NotifyService } from '../../shared/notify.service';
 })
 export class SettingsComponent {
   private readonly api = inject(ApiService);
+  private readonly settingsState = inject(SettingsStateService);
   private readonly notify = inject(NotifyService);
   readonly settings = signal<Settings | null>(null);
   readonly google = signal<GoogleStatus | null>(null);
+  readonly googleOAuth = signal<GoogleOAuthSettings | null>(null);
+  readonly llmHelp = signal(false);
+  readonly googleHelp = signal(false);
+  readonly showLlmApiKey = signal(false);
+  readonly showGoogleSecret = signal(false);
   readonly error = signal('');
   readonly busy = signal(false);
-  form = { mode: 'DEMO', llmProvider: 'Demo', masterResumePath: '' };
+  form = { mode: 'DEMO', llmProvider: 'Demo', llmDisplayName: 'Demo', llmBaseUrl: 'https://api.openai.com/v1/', llmApiKey: '', llmModel: 'gpt-4o-mini', masterResumePath: '' };
+  googleForm = { clientId: '', clientSecret: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback' };
   importFile: File | null = null;
   resumeFile: File | null = null;
   readonly dragging = signal(false);
@@ -172,15 +272,34 @@ export class SettingsComponent {
 
   async load(): Promise<void> {
     try {
-      const [s, g] = await Promise.all([this.api.settings(), this.api.googleStatus().catch(() => ({ configured: false, connected: false }) as GoogleStatus)]);
-      this.settings.set(s); this.google.set(g);
-      this.form = { mode: s.mode, llmProvider: s.llmProvider, masterResumePath: s.masterResumePath };
+      const [s, g, go] = await Promise.all([
+        this.api.settings(),
+        this.api.googleStatus().catch(() => ({ configured: false, connected: false }) as GoogleStatus),
+        this.api.googleOAuthSettings().catch(() => ({ clientId: '', clientSecret: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback', configured: false }) as GoogleOAuthSettings)
+      ]);
+      this.settings.set(s); this.settingsState.update(s); this.google.set(g); this.googleOAuth.set(go);
+      this.form = { mode: s.mode, llmProvider: s.llmProvider, llmDisplayName: s.llmDisplayName, llmBaseUrl: s.llmBaseUrl, llmApiKey: '', llmModel: s.llmModel, masterResumePath: s.masterResumePath };
+      this.googleForm = { clientId: go.clientId, clientSecret: go.clientSecret, redirectUri: go.redirectUri };
     } catch (e) { this.error.set(describeError(e)); }
   }
 
   async save(): Promise<void> {
     if (this.form.mode === 'LIVE' && !await this.notify.confirm({ title: 'Switch to LIVE mode?', message: 'LIVE mode allows approved actions to write resume files and use Gmail. Every action still requires your approval and explicit execution.', confirmLabel: 'Enable LIVE', danger: true })) return;
-    await this.run(async () => { await this.api.updateSettings(this.form); this.notify.success('Settings saved.'); });
+    await this.run(async () => {
+      await this.api.updateSettings(this.form);
+      this.notify.success('Settings saved locally.');
+    });
+  }
+  googleConfigured() { return !!this.googleForm.clientId.trim() && !!this.googleForm.clientSecret.trim() && !!this.googleForm.redirectUri.trim(); }
+  saveGoogleOAuth() {
+    return this.run(async () => {
+      await this.api.updateGoogleOAuthSettings({
+        clientId: this.googleForm.clientId,
+        clientSecret: this.googleForm.clientSecret,
+        redirectUri: this.googleForm.redirectUri
+      });
+      this.notify.success('Google OAuth settings saved to appsettings.json.');
+    });
   }
   connect() { return this.run(async () => { const { url } = await this.api.googleAuthorizeUrl(); window.location.href = url; }); }
   revoke() { return this.run(async () => { await this.api.googleRevoke(); this.notify.info('Google disconnected.'); }); }

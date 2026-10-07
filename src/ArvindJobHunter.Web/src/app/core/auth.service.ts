@@ -23,6 +23,14 @@ export class AuthService {
     await firstValueFrom(this.http.post<void>(`${environment.apiBaseUrl}/api/auth/setup`, { username, password }));
   }
 
+  async signup(username: string, password: string): Promise<void> {
+    await firstValueFrom(this.http.post<void>(`${environment.apiBaseUrl}/api/auth/signup`, { username, password }));
+  }
+
+  async resetPassword(username: string, newPassword: string): Promise<void> {
+    await firstValueFrom(this.http.post<void>(`${environment.apiBaseUrl}/api/auth/reset-password`, { username, newPassword }));
+  }
+
   async login(username: string, password: string): Promise<void> {
     const session = await firstValueFrom(this.http.post<Session>(`${environment.apiBaseUrl}/api/auth/login`, { username, password }));
     sessionStorage.setItem(TOKEN_KEY, session.token);

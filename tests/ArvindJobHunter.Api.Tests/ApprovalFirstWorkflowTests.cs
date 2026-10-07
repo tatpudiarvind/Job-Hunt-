@@ -85,6 +85,59 @@ public sealed class ApprovalFirstWorkflowTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Settings_CanPersistOpenAiCompatibleConfiguration_AndPreserveStoredApiKey()
+    {
+        using var isolatedFactory = new ApiFactory();
+        var client = isolatedFactory.CreateClient();
+        var status = await client.GetFromJsonAsync<JsonElement>("/api/auth/status");
+        var credentials = new { username = "arvind", password = "correct-horse-battery-staple" };
+        if (!status.GetProperty("configured").GetBoolean())
+        {
+            var setup = await client.PostAsJsonAsync("/api/auth/setup", credentials);
+            Assert.True(setup.IsSuccessStatusCode, await setup.Content.ReadAsStringAsync());
+        }
+
+        var login = await client.PostAsJsonAsync("/api/auth/login", credentials);
+        login.EnsureSuccessStatusCode();
+        var session = await login.Content.ReadFromJsonAsync<JsonElement>();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.GetProperty("token").GetString());
+
+        var updated = await client.PutAsJsonAsync("/api/settings", new
+        {
+            mode = "DEMO",
+            llmProvider = "OpenAI",
+            llmDisplayName = "Local Gateway",
+            llmBaseUrl = "http://localhost:11434/v1/",
+            llmApiKey = "secret-key",
+            llmModel = "llama3.1:8b",
+            masterResumePath = ""
+        });
+        updated.EnsureSuccessStatusCode();
+
+        var settings = await client.GetFromJsonAsync<JsonElement>("/api/settings");
+        Assert.Equal("OpenAI", settings.GetProperty("llmProvider").GetString());
+        Assert.Equal("Local Gateway", settings.GetProperty("llmDisplayName").GetString());
+        Assert.Equal("http://localhost:11434/v1/", settings.GetProperty("llmBaseUrl").GetString());
+        Assert.Equal("llama3.1:8b", settings.GetProperty("llmModel").GetString());
+        Assert.True(settings.GetProperty("llmConfigured").GetBoolean());
+
+        var preserved = await client.PutAsJsonAsync("/api/settings", new
+        {
+            mode = "DEMO",
+            llmProvider = "OpenAI",
+            llmDisplayName = "Local Gateway",
+            llmBaseUrl = "http://localhost:11434/v1/",
+            llmApiKey = "",
+            llmModel = "llama3.1:8b",
+            masterResumePath = ""
+        });
+        preserved.EnsureSuccessStatusCode();
+
+        var persistedText = await File.ReadAllTextAsync(Path.Combine(isolatedFactory.DataDirectory, "settings.json"));
+        Assert.Contains("secret-key", persistedText);
+    }
+
+    [Fact]
     public async Task FullPipeline_RequiresApprovalBeforeExecution_AndIsIdempotent()
     {
         var client = await AuthenticatedClientAsync();
@@ -148,6 +201,32 @@ public sealed class ApprovalFirstWorkflowTests : IClassFixture<ApiFactory>
         Assert.Contains("EXECUTION_BLOCKED", actions);
         Assert.Contains("APPROVAL_APPROVED", actions);
         Assert.Contains("EXECUTION_SUCCESS", actions);
+    }
+
+    [Fact]
+    public async Task ResetPassword_UpdatesStoredCredentials_AndInvalidatesOldSession()
+    {
+        using var isolatedFactory = new ApiFactory();
+        var client = isolatedFactory.CreateClient();
+        var signup = await client.PostAsJsonAsync("/api/auth/signup", new { username = "arvind", password = "correct-horse-battery-staple" });
+        signup.EnsureSuccessStatusCode();
+
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { username = "arvind", password = "correct-horse-battery-staple" });
+        login.EnsureSuccessStatusCode();
+        var session = await login.Content.ReadFromJsonAsync<JsonElement>();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.GetProperty("token").GetString());
+
+        var reset = await client.PostAsJsonAsync("/api/auth/reset-password", new { username = "arvind", newPassword = "new-correct-horse-battery-staple" });
+        reset.EnsureSuccessStatusCode();
+
+        var oldSessionResponse = await client.GetAsync("/api/jobs");
+        Assert.Equal(HttpStatusCode.Unauthorized, oldSessionResponse.StatusCode);
+
+        var oldPasswordLogin = await isolatedFactory.CreateClient().PostAsJsonAsync("/api/auth/login", new { username = "arvind", password = "correct-horse-battery-staple" });
+        Assert.Equal(HttpStatusCode.Unauthorized, oldPasswordLogin.StatusCode);
+
+        var newPasswordLogin = await isolatedFactory.CreateClient().PostAsJsonAsync("/api/auth/login", new { username = "arvind", password = "new-correct-horse-battery-staple" });
+        newPasswordLogin.EnsureSuccessStatusCode();
     }
 
     [Fact]

@@ -17,7 +17,8 @@ public static class DependencyInjection
         this IServiceCollection services,
         string dataDirectory,
         RuntimeSettings defaultSettings,
-        GoogleOAuthOptions googleOptions,
+        string appSettingsPath,
+        GoogleOAuthConfiguration googleOptions,
         WorkerOptions? workerOptions = null)
     {
         services.AddSingleton<IJsonStore<List<AuditEvent>>>(new JsonFileStore<List<AuditEvent>>(dataDirectory, "audit.json"));
@@ -65,13 +66,13 @@ public static class DependencyInjection
             services.AddSingleton<IResumeDocumentService>(sp => sp.GetRequiredService<OpenXmlResumeDocumentService>());
         }
 
-        services.AddSingleton(googleOptions);
+        services.AddSingleton<IGoogleOAuthSettingsProvider>(_ => new JsonGoogleOAuthSettingsProvider(appSettingsPath, googleOptions));
         services.AddHttpClient("GoogleOAuth");
         services.AddTransient<IGoogleOAuthService>(sp => new GoogleOAuthService(
             sp.GetRequiredService<IHttpClientFactory>().CreateClient("GoogleOAuth"),
             sp.GetRequiredService<IDataProtectionProvider>().CreateProtector("ArvindJobHunter.GoogleOAuth.v1"),
             sp.GetRequiredService<IJsonStore<GoogleTokenDocument>>(),
-            googleOptions));
+            sp.GetRequiredService<IGoogleOAuthSettingsProvider>()));
         services.AddHttpClient<IGmailClient, GmailClient>();
         return services;
     }

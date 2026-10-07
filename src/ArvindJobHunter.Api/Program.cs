@@ -18,11 +18,16 @@ var builder = WebApplication.CreateBuilder(args);
 
 var dataDirectory = Path.GetFullPath(builder.Configuration["Storage:DataDirectory"] ?? Path.Combine(AppContext.BaseDirectory, "data"));
 var webBaseUrl = builder.Configuration["Web:BaseUrl"] ?? "http://localhost:4200";
+var appSettingsPath = Path.Combine(builder.Environment.ContentRootPath, "appsettings.json");
 
 var defaultSettings = new RuntimeSettings
 {
     Mode = Enum.TryParse<ExecutionMode>(builder.Configuration["Runtime:Mode"], true, out var mode) ? mode : ExecutionMode.DEMO,
     LlmProvider = builder.Configuration["Runtime:LlmProvider"] ?? "Demo",
+    LlmDisplayName = builder.Configuration["Runtime:LlmDisplayName"] ?? builder.Configuration["Runtime:LlmProvider"] ?? "Demo",
+    LlmBaseUrl = builder.Configuration["Runtime:LlmBaseUrl"] ?? builder.Configuration["OpenAI:BaseUrl"] ?? "https://api.openai.com/v1/",
+    LlmApiKey = builder.Configuration["Runtime:LlmApiKey"] ?? builder.Configuration["OpenAI:ApiKey"] ?? "",
+    LlmModel = builder.Configuration["Runtime:LlmModel"] ?? builder.Configuration["OpenAI:Model"] ?? "gpt-4o-mini",
     MasterResumePath = builder.Configuration["Runtime:MasterResumePath"] ?? "",
     QualificationThreshold = int.TryParse(builder.Configuration["Runtime:QualificationThreshold"], out var threshold) ? threshold : 60,
     ApprovalTtlHours = int.TryParse(builder.Configuration["Runtime:ApprovalTtlHours"], out var ttl) ? ttl : 24
@@ -30,21 +35,21 @@ var defaultSettings = new RuntimeSettings
 
 builder.Services.AddProblemDetails();
 builder.Services.AddApplication();
-builder.Services.AddInfrastructure(dataDirectory, defaultSettings, new GoogleOAuthOptions
-{
-    ClientId = builder.Configuration["Google:ClientId"] ?? "",
-    ClientSecret = builder.Configuration["Google:ClientSecret"] ?? "",
-    RedirectUri = builder.Configuration["Google:RedirectUri"] ?? "http://localhost:5228/api/integrations/google/callback"
-},
+builder.Services.AddInfrastructure(dataDirectory, defaultSettings, appSettingsPath, new GoogleOAuthConfiguration(
+    builder.Configuration["Google:ClientId"] ?? "",
+    builder.Configuration["Google:ClientSecret"] ?? "",
+    builder.Configuration["Google:RedirectUri"] ?? "http://localhost:5228/api/integrations/google/callback"),
 new WorkerOptions
-{
+{ 
     BaseUrl = builder.Configuration["Worker:BaseUrl"] ?? "",
     SharedSecret = builder.Configuration["Worker:SharedSecret"] ?? ""
 });
 builder.Services.AddAgents(new OpenAiOptions
 {
-    ApiKey = builder.Configuration["OpenAI:ApiKey"] ?? "",
-    Model = builder.Configuration["OpenAI:Model"] ?? "gpt-4o-mini"
+    ApiKey = builder.Configuration["OpenAI:ApiKey"] ?? builder.Configuration["Runtime:LlmApiKey"] ?? "",
+    Model = builder.Configuration["OpenAI:Model"] ?? builder.Configuration["Runtime:LlmModel"] ?? "gpt-4o-mini",
+    BaseUrl = builder.Configuration["OpenAI:BaseUrl"] ?? builder.Configuration["Runtime:LlmBaseUrl"] ?? "https://api.openai.com/v1/",
+    DisplayName = builder.Configuration["Runtime:LlmDisplayName"] ?? "OpenAI"
 });
 var dataProtection = builder.Services.AddDataProtection()
     .SetApplicationName("ArvindJobHunter")

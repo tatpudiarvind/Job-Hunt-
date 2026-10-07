@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -12,8 +12,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
 import { AuthService } from '../core/auth.service';
-import { ApiService } from '../core/api.service';
-import { Settings } from '../core/models';
+import { SettingsStateService } from '../core/settings-state.service';
 import { StatusChipComponent } from '../shared/status-chip.component';
 
 interface NavItem { path: string; label: string; icon: string; }
@@ -60,9 +59,9 @@ interface NavItem { path: string; label: string; icon: string; }
           }
           <span class="grow"></span>
           @if (settings(); as s) {
-            <a routerLink="/settings" class="mode" matTooltip="Execution mode · LLM provider. Change in Settings.">
+            <a routerLink="/settings" class="mode" matTooltip="Execution mode and AI provider. Change in Settings.">
               <app-status-chip [status]="s.mode" />
-              <span class="chip">{{ s.llmProvider }}</span>
+              <span class="chip">AI · {{ s.llmDisplayName }}</span>
             </a>
           }
           <button mat-icon-button [matMenuTriggerFor]="menu" aria-label="Account"><mat-icon class="material-symbols-rounded">account_circle</mat-icon></button>
@@ -99,9 +98,9 @@ interface NavItem { path: string; label: string; icon: string; }
 })
 export class ShellComponent {
   private readonly auth = inject(AuthService);
-  private readonly api = inject(ApiService);
+  private readonly settingsState = inject(SettingsStateService);
   private readonly breakpoints = inject(BreakpointObserver);
-  readonly settings = signal<Settings | null>(null);
+  readonly settings = this.settingsState.settings;
   readonly isHandset = toSignal(this.breakpoints.observe('(max-width: 960px)').pipe(map(r => r.matches)), { initialValue: false });
 
   readonly primary: NavItem[] = [
@@ -118,7 +117,7 @@ export class ShellComponent {
     { path: '/settings', label: 'Settings', icon: 'settings' }
   ];
 
-  constructor() { this.api.settings().then(s => this.settings.set(s)).catch(() => undefined); }
+  constructor() { void this.settingsState.load().catch(() => undefined); }
 
   logout(): void { void this.auth.logout(); }
 }

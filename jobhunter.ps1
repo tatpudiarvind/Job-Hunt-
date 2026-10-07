@@ -55,7 +55,7 @@ function Start-App {
 	if (Get-ListeningPid $apiPort) { Write-Host "  [--] API already running on port $apiPort" -ForegroundColor DarkGray }
 	else {
 		Write-Host "  Launching API..."
-		Start-Process powershell.exe -WorkingDirectory $apiDir -ArgumentList '-NoExit', '-Command', "`$Host.UI.RawUI.WindowTitle = 'Job Hunter - API'; dotnet run --launch-profile http"
+		Start-Process powershell.exe -WorkingDirectory $apiDir -ArgumentList '-NoLogo', '-NoProfile', '-Command', "`$Host.UI.RawUI.WindowTitle = 'Job Hunter - API'; dotnet run --launch-profile http"
 	}
 
 	if (Get-ListeningPid $webPort) { Write-Host "  [--] Frontend already running on port $webPort" -ForegroundColor DarkGray }
@@ -65,7 +65,7 @@ function Start-App {
 			Push-Location $webDir; try { npm install } finally { Pop-Location }
 		}
 		Write-Host "  Launching frontend..."
-		Start-Process powershell.exe -WorkingDirectory $webDir -ArgumentList '-NoExit', '-Command', "`$Host.UI.RawUI.WindowTitle = 'Job Hunter - Web'; npx ng serve"
+		Start-Process powershell.exe -WorkingDirectory $webDir -ArgumentList '-NoLogo', '-NoProfile', '-Command', "`$Host.UI.RawUI.WindowTitle = 'Job Hunter - Web'; npx ng serve"
 	}
 
 	$apiOk = Wait-ForPort $apiPort 'API'
