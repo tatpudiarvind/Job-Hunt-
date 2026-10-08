@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
 import {
   AgentRun, ApprovalRequest, AuditEvent, CandidateFact, CandidateProfile, Dashboard, EmailDraft, ExecutionReceipt,
-  GoogleStatus, InterviewPrepPlan, Job, JobApplication, JobPipelineResult, JobPostingDraft, ResumeVersion, Settings
+  GoogleOAuthSettings, GoogleStatus, InterviewPrepPlan, Job, JobApplication, JobPipelineResult, JobPostingDraft, ResumeVersion, Settings
 } from './models';
 
 @Injectable({ providedIn: 'root' })
@@ -58,14 +58,17 @@ export class ApiService {
 
   emails() { return this.get<EmailDraft[]>('/emails'); }
   updateEmail(id: string, body: { to: string; subject: string; body: string }) { return this.put<EmailDraft>(`/emails/${id}`, body); }
-  requestEmailApproval(id: string) { return this.post<ApprovalRequest>(`/emails/${id}/request-approval`); }
+  /** `send` is a required API flag: true asks to approve sending, false asks to approve creating a Gmail draft. */
+  requestEmailApproval(id: string, send = true) { return this.post<ApprovalRequest>(`/emails/${id}/request-approval?send=${send}`); }
   deleteEmail(id: string) { return this.delete(`/emails/${id}`); }
 
   agentRuns() { return this.get<AgentRun[]>('/agent-runs'); }
   auditLogs() { return this.get<AuditEvent[]>('/audit-logs'); }
 
   settings() { return this.get<Settings>('/settings'); }
-  updateSettings(body: { mode: string | null; llmProvider: string | null; masterResumePath: string | null }) { return this.put<unknown>('/settings', body); }
+  updateSettings(body: { mode: string | null; llmProvider: string | null; llmDisplayName: string | null; llmBaseUrl: string | null; llmApiKey: string | null; llmModel: string | null; masterResumePath: string | null }) { return this.put<unknown>('/settings', body); }
+  googleOAuthSettings() { return this.get<GoogleOAuthSettings>('/settings/google-oauth'); }
+  updateGoogleOAuthSettings(body: { clientId: string; clientSecret: string; redirectUri: string }) { return this.put<GoogleOAuthSettings>('/settings/google-oauth', body); }
   uploadMasterResume(file: File) { const form = new FormData(); form.append('file', file, file.name); return firstValueFrom(this.http.post<{ masterResumePath: string; fileName: string; size: number }>(`${environment.apiBaseUrl}/api/settings/master-resume`, form)); }
   googleStatus() { return this.get<GoogleStatus>('/integrations/google/status'); }
   googleAuthorizeUrl() { return this.get<{ url: string }>('/integrations/google/authorize'); }

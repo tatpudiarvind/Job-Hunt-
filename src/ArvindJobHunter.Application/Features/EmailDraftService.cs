@@ -1,3 +1,4 @@
+using System.Net.Mail;
 using ArvindJobHunter.Application.Abstractions;
 using ArvindJobHunter.Domain;
 using ArvindJobHunter.Domain.Entities;
@@ -34,6 +35,15 @@ public sealed class EmailDraftService(IRepository<EmailDraft> repository, Approv
     {
         var draft = await repository.GetAsync(id, cancellationToken);
         if (draft is null) return null;
+        // A valid address is required to send; drafts may stay unaddressed, but whatever is there must parse,
+        // because the value is written verbatim into the MIME "To:" header.
+        if (send ? !HasValidRecipients(draft.To) : !string.IsNullOrWhiteSpace(draft.To) && !HasValidRecipients(draft.To))
+        {
+            throw new ArgumentException(send
+                ? "Add a valid recipient email address before requesting approval to send."
+                : "The recipient is not a valid email address.");
+        }
+
         var action = send ? ApprovalActionType.SEND_EMAIL : ApprovalActionType.CREATE_EMAIL_DRAFT;
         var approval = await approvals.RequestAsync(action, nameof(EmailDraft), draft.Id, draft.PayloadForApproval(),
             $"{(send ? "Send" : "Create Gmail draft")} \"{draft.Subject}\" to {draft.To}", userId, cancellationToken);
@@ -54,4 +64,12 @@ public sealed class EmailDraftService(IRepository<EmailDraft> repository, Approv
     }
 
     public Task SaveAsync(EmailDraft draft, CancellationToken cancellationToken) => repository.UpsertAsync(draft, cancellationToken);
+
+    /// <summary>One or more comma/semicolon separated addresses, each optionally with a display name.</summary>
+    public static bool HasValidRecipients(string? to)
+    {
+        if (string.IsNullOrWhiteSpace(to)) return false;
+        var parts = to.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length > 0 && parts.All(part => !part.Any(char.IsControl) && MailAddress.TryCreate(part, out _));
+    }
 }

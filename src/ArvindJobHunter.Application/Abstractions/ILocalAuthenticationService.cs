@@ -13,6 +13,8 @@ public interface ILocalAuthenticationService
 {
     Task<bool> IsConfiguredAsync(CancellationToken cancellationToken);
     Task<bool> SetupAsync(string username, string password, CancellationToken cancellationToken);
+    Task<bool> SignupAsync(string username, string password, CancellationToken cancellationToken);
+    Task<bool> ResetPasswordAsync(string username, string newPassword, CancellationToken cancellationToken);
     Task<LocalSession?> LoginAsync(string username, string password, CancellationToken cancellationToken);
     bool TryGetUser(string token, out LocalSession session);
     void Logout(string token);

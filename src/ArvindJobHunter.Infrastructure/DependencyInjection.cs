@@ -8,19 +8,23 @@ using ArvindJobHunter.Infrastructure.Resume;
 using ArvindJobHunter.ResumeAutomation.Word;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace ArvindJobHunter.Infrastructure;
 
 public static class DependencyInjection
 {
+    private const string StoreLogCategory = "ArvindJobHunter.Infrastructure.Persistence.JsonFileStore";
+
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
         string dataDirectory,
         RuntimeSettings defaultSettings,
-        GoogleOAuthOptions googleOptions,
+        string appSettingsPath,
+        GoogleOAuthConfiguration googleOptions,
         WorkerOptions? workerOptions = null)
     {
-        services.AddSingleton<IJsonStore<List<AuditEvent>>>(new JsonFileStore<List<AuditEvent>>(dataDirectory, "audit.json"));
+        services.AddSingleton<IJsonStore<List<AuditEvent>>>(sp => new JsonFileStore<List<AuditEvent>>(dataDirectory, "audit.json", logger: StoreLogger(sp)));
         services.AddSingleton<IAuditStore, JsonAuditStore>();
 
         AddStore<CandidateProfileDocument>(services, dataDirectory, "candidate.json");
@@ -40,11 +44,19 @@ public static class DependencyInjection
         services.AddSingleton<ICacheInvalidatable>(sp => (ICacheInvalidatable)sp.GetRequiredService<ICandidateProfileRepository>());
         services.AddSingleton<ICacheInvalidatable>(sp => (ICacheInvalidatable)sp.GetRequiredService<IAuditStore>());
         services.AddSingleton<ICacheInvalidatable>(sp => (ICacheInvalidatable)sp.GetRequiredService<IRuntimeSettingsProvider>());
-        services.AddSingleton(new DataPortabilityService(dataDirectory));
-        services.AddSingleton<IRuntimeSettingsProvider>(sp => new JsonRuntimeSettingsProvider(sp.GetRequiredService<IJsonStore<RuntimeSettings>>(), defaultSettings));
+        services.AddSingleton(sp => new DataPortabilityService(dataDirectory, sp.GetRequiredService<ILogger<DataPortabilityService>>()));
+        services.AddSingleton<IRuntimeSettingsProvider>(sp => new JsonRuntimeSettingsProvider(
+            sp.GetRequiredService<IJsonStore<RuntimeSettings>>(), defaultSettings, sp.GetRequiredService<ILogger<JsonRuntimeSettingsProvider>>()));
         workerOptions ??= new WorkerOptions();
+        // Redirects are followed by the fetcher itself so that every hop is checked against private/loopback targets,
+        // and the connect callback re-checks the address actually dialled (DNS rebinding).
         services.AddHttpClient<IJobPostingFetcher, HttpJobPostingFetcher>(http => http.Timeout = TimeSpan.FromSeconds(20))
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = true, MaxAutomaticRedirections = 5, AutomaticDecompression = System.Net.DecompressionMethods.All });
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                AutomaticDecompression = System.Net.DecompressionMethods.All,
+                ConnectCallback = HttpJobPostingFetcher.ConnectToPublicAddressAsync
+            });
         services.AddSingleton(workerOptions);
         services.AddSingleton<OpenXmlResumeDocumentService>();
         if (workerOptions.Enabled)
@@ -58,32 +70,37 @@ public static class DependencyInjection
             services.AddSingleton<IResumeDocumentService>(sp => new WorkerResumeDocumentService(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient("ResumeWorker"),
                 workerOptions,
-                sp.GetRequiredService<OpenXmlResumeDocumentService>()));
+                sp.GetRequiredService<OpenXmlResumeDocumentService>(),
+                sp.GetRequiredService<ILogger<WorkerResumeDocumentService>>()));
         }
         else
         {
             services.AddSingleton<IResumeDocumentService>(sp => sp.GetRequiredService<OpenXmlResumeDocumentService>());
         }
 
-        services.AddSingleton(googleOptions);
-        services.AddHttpClient("GoogleOAuth");
-        services.AddTransient<IGoogleOAuthService>(sp => new GoogleOAuthService(
-            sp.GetRequiredService<IHttpClientFactory>().CreateClient("GoogleOAuth"),
+        services.AddSingleton<IGoogleOAuthSettingsProvider>(sp => new JsonGoogleOAuthSettingsProvider(appSettingsPath, googleOptions, sp.GetRequiredService<ILogger<JsonGoogleOAuthSettingsProvider>>()));
+        services.AddHttpClient(GoogleOAuthService.HttpClientName);
+        // Singleton: the OAuth state issued by /authorize must survive until Google calls /callback.
+        services.AddSingleton<IGoogleOAuthService>(sp => new GoogleOAuthService(
+            sp.GetRequiredService<IHttpClientFactory>(),
             sp.GetRequiredService<IDataProtectionProvider>().CreateProtector("ArvindJobHunter.GoogleOAuth.v1"),
             sp.GetRequiredService<IJsonStore<GoogleTokenDocument>>(),
-            googleOptions));
+            sp.GetRequiredService<IGoogleOAuthSettingsProvider>(),
+            sp.GetRequiredService<ILogger<GoogleOAuthService>>()));
         services.AddHttpClient<IGmailClient, GmailClient>();
         return services;
     }
 
+    private static ILogger StoreLogger(IServiceProvider sp) => sp.GetRequiredService<ILoggerFactory>().CreateLogger(StoreLogCategory);
+
     private static void AddStore<T>(IServiceCollection services, string dataDirectory, string fileName)
         where T : class, new() =>
-        services.AddSingleton<IJsonStore<T>>(sp => new JsonFileStore<T>(dataDirectory, fileName, Notifier(sp)));
+        services.AddSingleton<IJsonStore<T>>(sp => new JsonFileStore<T>(dataDirectory, fileName, Notifier(sp), StoreLogger(sp)));
 
     private static void AddListRepository<T>(IServiceCollection services, string dataDirectory, string fileName, Func<T, Guid> idSelector)
         where T : class
     {
-        services.AddSingleton<IJsonStore<List<T>>>(sp => new JsonFileStore<List<T>>(dataDirectory, fileName, Notifier(sp)));
+        services.AddSingleton<IJsonStore<List<T>>>(sp => new JsonFileStore<List<T>>(dataDirectory, fileName, Notifier(sp), StoreLogger(sp)));
         services.AddSingleton<IRepository<T>>(sp => new JsonListRepository<T>(sp.GetRequiredService<IJsonStore<List<T>>>(), idSelector));
         services.AddSingleton<ICacheInvalidatable>(sp => (ICacheInvalidatable)sp.GetRequiredService<IRepository<T>>());
     }

@@ -45,7 +45,16 @@ public static class ResumeAndEmailEndpoints
             await service.EditAsync(id, request.To, request.Subject, request.Body, user.UserId(), ct) is { } draft ? Results.Ok(draft) : Results.NotFound());
 
         group.MapPost("/{id:guid}/request-approval", async Task<IResult> (Guid id, bool send, ClaimsPrincipal user, EmailDraftService service, CancellationToken ct) =>
-            await service.RequestApprovalAsync(id, send, user.UserId(), ct) is { } approval ? Results.Ok(approval) : Results.NotFound());
+        {
+            try
+            {
+                return await service.RequestApprovalAsync(id, send, user.UserId(), ct) is { } approval ? Results.Ok(approval) : Results.NotFound();
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["to"] = [ex.Message] });
+            }
+        });
 
         group.MapDelete("/{id:guid}", async Task<IResult> (Guid id, ClaimsPrincipal user, EmailDraftService service, CancellationToken ct) =>
             await service.DeleteAsync(id, user.UserId(), ct) ? Results.NoContent() : Results.NotFound());

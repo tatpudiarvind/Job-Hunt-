@@ -13,4 +13,8 @@ secrets.json
 
 src/ArvindJobHunter.Api/data/
 src/ArvindJobHunter.Api/keys/
+src/ArvindJobHunter.Worker/output/
 *.corrupt.*.json
+
+# Markdown log files (may contain personal data such as email addresses and file paths)
+**/logs/

@@ -5,6 +5,9 @@ public interface IJsonStore<T>
 {
     Task<T> LoadAsync(CancellationToken cancellationToken);
     Task SaveAsync(T value, CancellationToken cancellationToken);
+
+    /// <summary>True once the document has been saved at least once (a missing file loads as <c>new T()</c>).</summary>
+    Task<bool> ExistsAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>Cached, in-process repository for a list of identifiable aggregates persisted as one JSON file.</summary>
