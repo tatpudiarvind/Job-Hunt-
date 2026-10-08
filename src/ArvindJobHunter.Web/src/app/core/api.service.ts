@@ -58,7 +58,8 @@ export class ApiService {
 
   emails() { return this.get<EmailDraft[]>('/emails'); }
   updateEmail(id: string, body: { to: string; subject: string; body: string }) { return this.put<EmailDraft>(`/emails/${id}`, body); }
-  requestEmailApproval(id: string) { return this.post<ApprovalRequest>(`/emails/${id}/request-approval`); }
+  /** `send` is a required API flag: true asks to approve sending, false asks to approve creating a Gmail draft. */
+  requestEmailApproval(id: string, send = true) { return this.post<ApprovalRequest>(`/emails/${id}/request-approval?send=${send}`); }
   deleteEmail(id: string) { return this.delete(`/emails/${id}`); }
 
   agentRuns() { return this.get<AgentRun[]>('/agent-runs'); }

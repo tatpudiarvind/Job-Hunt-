@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -267,8 +268,17 @@ export class SettingsComponent {
   importFile: File | null = null;
   resumeFile: File | null = null;
   readonly dragging = signal(false);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
-  constructor() { void this.load(); }
+  constructor() {
+    void this.load();
+    // The API's Google OAuth callback redirects back here with ?google=connected|failed.
+    const google = this.route.snapshot.queryParamMap.get('google');
+    if (google === 'connected') this.notify.success('Gmail connected.');
+    else if (google === 'failed') this.notify.error('Google authorization did not complete. The API log (data/logs) has the details.');
+    if (google) void this.router.navigate([], { relativeTo: this.route, queryParams: { google: null }, queryParamsHandling: 'merge', replaceUrl: true });
+  }
 
   async load(): Promise<void> {
     try {

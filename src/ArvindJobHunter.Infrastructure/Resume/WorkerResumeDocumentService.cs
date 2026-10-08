@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ArvindJobHunter.Application.Abstractions;
 using ArvindJobHunter.Domain.Entities;
+using Microsoft.Extensions.Logging;
 
 namespace ArvindJobHunter.Infrastructure.Resume;
 
@@ -18,7 +19,7 @@ public sealed class WorkerOptions
 /// Delegates resume reads/writes to the out-of-process worker so document handling runs in an isolated process.
 /// Falls back to the in-process Open XML service for reads if the worker is unreachable; never for writes.
 /// </summary>
-public sealed class WorkerResumeDocumentService(HttpClient http, WorkerOptions options, IResumeDocumentService inProcessFallback) : IResumeDocumentService
+public sealed class WorkerResumeDocumentService(HttpClient http, WorkerOptions options, IResumeDocumentService inProcessFallback, ILogger<WorkerResumeDocumentService>? logger = null) : IResumeDocumentService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -27,11 +28,12 @@ public sealed class WorkerResumeDocumentService(HttpClient http, WorkerOptions o
         try
         {
             using var response = await http.PostAsJsonAsync("/resume/read", new { masterPath = path }, Json, cancellationToken);
-            await ThrowIfFailedAsync(response, cancellationToken);
+            await ThrowIfFailedAsync(response, "read", cancellationToken);
             return (await response.Content.ReadFromJsonAsync<ResumeDocument>(Json, cancellationToken))!;
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
         {
+            logger?.LogWarning(ex, "Resume worker at {WorkerUrl} is unreachable; reading the master resume in-process instead", options.BaseUrl);
             return await inProcessFallback.ReadAsync(path, cancellationToken);
         }
     }
@@ -45,16 +47,18 @@ public sealed class WorkerResumeDocumentService(HttpClient http, WorkerOptions o
             outputFileName = Path.GetFileName(outputPath),
             changes
         };
+        logger?.LogInformation("Applying {ChangeCount} resume change(s) through the worker at {WorkerUrl} (output {OutputFile})", changes.Count, options.BaseUrl, payload.outputFileName);
         using var response = await http.PostAsJsonAsync("/resume/apply", payload, Json, cancellationToken);
-        await ThrowIfFailedAsync(response, cancellationToken);
+        await ThrowIfFailedAsync(response, "apply", cancellationToken);
         return (await response.Content.ReadFromJsonAsync<ResumeChangeReport>(Json, cancellationToken))!;
     }
 
-    private static async Task ThrowIfFailedAsync(HttpResponseMessage response, CancellationToken ct)
+    private async Task ThrowIfFailedAsync(HttpResponseMessage response, string operation, CancellationToken ct)
     {
         if (response.IsSuccessStatusCode) return;
         var body = await response.Content.ReadAsStringAsync(ct);
         var message = $"Worker returned {(int)response.StatusCode}: {body}";
+        logger?.LogError("Resume worker {Operation} failed with {StatusCode}: {Body}", operation, (int)response.StatusCode, body);
         throw response.StatusCode switch
         {
             System.Net.HttpStatusCode.NotFound => new FileNotFoundException(message),

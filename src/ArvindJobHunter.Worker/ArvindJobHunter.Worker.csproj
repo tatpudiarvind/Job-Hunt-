@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ArvindJobHunter.Application\ArvindJobHunter.Application.csproj" />
+    <ProjectReference Include="..\ArvindJobHunter.Logging\ArvindJobHunter.Logging.csproj" />
     <ProjectReference Include="..\ArvindJobHunter.ResumeAutomation\ArvindJobHunter.ResumeAutomation.csproj" />
   </ItemGroup>
 

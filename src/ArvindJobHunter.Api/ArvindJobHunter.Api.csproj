@@ -16,6 +16,7 @@
     <ProjectReference Include="..\ArvindJobHunter.Infrastructure\ArvindJobHunter.Infrastructure.csproj" />
     <ProjectReference Include="..\ArvindJobHunter.Agents\ArvindJobHunter.Agents.csproj" />
     <ProjectReference Include="..\ArvindJobHunter.Contracts\ArvindJobHunter.Contracts.csproj" />
+    <ProjectReference Include="..\ArvindJobHunter.Logging\ArvindJobHunter.Logging.csproj" />
   </ItemGroup>
 
 </Project>

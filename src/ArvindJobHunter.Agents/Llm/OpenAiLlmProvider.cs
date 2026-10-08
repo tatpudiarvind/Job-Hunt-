@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ArvindJobHunter.Application.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace ArvindJobHunter.Agents.Llm;
 
@@ -15,8 +17,10 @@ public sealed class OpenAiOptions
 }
 
 /// <summary>Optional OpenAI-compatible chat-completions adapter. Can target OpenAI, proxies, and local/self-hosted endpoints with the same API shape.</summary>
-public sealed class OpenAiLlmProvider(HttpClient httpClient, IRuntimeSettingsProvider settings, OpenAiOptions options) : ILlmProvider
+public sealed class OpenAiLlmProvider(HttpClient httpClient, IRuntimeSettingsProvider settings, OpenAiOptions options, ILogger<OpenAiLlmProvider> logger) : ILlmProvider
 {
+    private const int MaxErrorDetailLength = 500;
+
     public string Name => "OpenAI";
     public bool IsConfigured => true;
 
@@ -29,7 +33,8 @@ public sealed class OpenAiLlmProvider(HttpClient httpClient, IRuntimeSettingsPro
         var messages = new List<object> { new { role = "system", content = request.SystemPrompt } };
         messages.AddRange(request.Messages.Select(m => new { role = m.Role, content = m.Content }));
 
-        using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(resolved.BaseUrl), "chat/completions"))
+        var endpoint = new Uri(new Uri(resolved.BaseUrl), "chat/completions");
+        using var message = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
             Content = JsonContent.Create(new
             {
@@ -41,11 +46,26 @@ public sealed class OpenAiLlmProvider(HttpClient httpClient, IRuntimeSettingsPro
         };
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", resolved.ApiKey);
 
+        var schema = request.JsonSchemaName ?? "text";
+        logger.LogDebug("LLM request to {Endpoint}: model {Model}, schema {Schema}, {PromptCharacters} prompt characters",
+            endpoint, resolved.Model, schema, request.SystemPrompt.Length + request.Messages.Sum(m => m.Content.Length));
+        var watch = Stopwatch.StartNew();
         using var response = await httpClient.SendAsync(message, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var detail = ErrorDetail(await response.Content.ReadAsStringAsync(cancellationToken));
+            logger.LogError("LLM call to {Endpoint} (model {Model}, schema {Schema}) failed with {StatusCode} {Reason} after {ElapsedMs} ms: {Detail}",
+                endpoint, resolved.Model, schema, (int)response.StatusCode, response.ReasonPhrase, watch.ElapsedMilliseconds, detail);
+            throw new HttpRequestException($"{resolved.DisplayName} returned {(int)response.StatusCode} {response.ReasonPhrase}: {detail}", null, response.StatusCode);
+        }
+
         var payload = await response.Content.ReadFromJsonAsync<ChatCompletionResponse>(cancellationToken: cancellationToken)
             ?? throw new InvalidOperationException("Empty response from the configured LLM provider.");
         var content = payload.Choices.FirstOrDefault()?.Message.Content ?? "";
+        logger.LogInformation("LLM {Provider} ({Model}) answered {Schema} in {ElapsedMs} ms · tokens {PromptTokens} prompt + {CompletionTokens} completion",
+            resolved.DisplayName, payload.Model ?? resolved.Model, schema, watch.ElapsedMilliseconds,
+            payload.Usage?.PromptTokens.ToString() ?? "?", payload.Usage?.CompletionTokens.ToString() ?? "?");
+        if (content.Length == 0) logger.LogWarning("LLM {Provider} returned an empty message for {Schema}", resolved.DisplayName, schema);
         return new LlmResponse(content, resolved.DisplayName, payload.Model ?? resolved.Model, payload.Usage?.PromptTokens, payload.Usage?.CompletionTokens);
     }
 
@@ -54,6 +74,28 @@ public sealed class OpenAiLlmProvider(HttpClient httpClient, IRuntimeSettingsPro
         && !string.IsNullOrWhiteSpace(Resolve(settings).ApiKey);
 
     public string DisplayName(RuntimeSettings settings) => Resolve(settings).DisplayName;
+
+    /// <summary>OpenAI-style APIs explain failures in <c>{"error":{"message":…}}</c>; keep that text so the user sees why a run failed.</summary>
+    private static string ErrorDetail(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("error", out var error))
+            {
+                if (error.ValueKind == JsonValueKind.Object && error.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String) return Truncate(text.GetString()!);
+                if (error.ValueKind == JsonValueKind.String) return Truncate(error.GetString()!);
+            }
+        }
+        catch (JsonException)
+        {
+            // not JSON; fall through to the raw body
+        }
+
+        return string.IsNullOrWhiteSpace(body) ? "(empty response body)" : Truncate(body.Trim());
+    }
+
+    private static string Truncate(string value) => value.Length <= MaxErrorDetailLength ? value : value[..MaxErrorDetailLength] + "…";
 
     private OpenAiOptions Resolve(RuntimeSettings settings) => new()
     {

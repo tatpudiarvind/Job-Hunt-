@@ -18,6 +18,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Storage__DataDirectory", DataDirectory);
         Environment.SetEnvironmentVariable("Runtime__Mode", "DEMO");
         Environment.SetEnvironmentVariable("Runtime__LlmProvider", "Demo");
+        // Build the host now, while the variables point at this factory's directory. Otherwise a test that disposes
+        // another factory first (which clears the variables) would make this host fall back to a shared folder.
+        _ = Server;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -132,6 +135,10 @@ public sealed class ApprovalFirstWorkflowTests : IClassFixture<ApiFactory>
             masterResumePath = ""
         });
         preserved.EnsureSuccessStatusCode();
+        var preservedBody = await preserved.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("secret-key", preservedBody);
+        Assert.DoesNotContain("secret-key", await updated.Content.ReadAsStringAsync());
+        Assert.True(JsonDocument.Parse(preservedBody).RootElement.GetProperty("llmConfigured").GetBoolean());
 
         var persistedText = await File.ReadAllTextAsync(Path.Combine(isolatedFactory.DataDirectory, "settings.json"));
         Assert.Contains("secret-key", persistedText);

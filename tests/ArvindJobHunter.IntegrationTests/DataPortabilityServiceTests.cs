@@ -67,6 +67,40 @@ public sealed class DataPortabilityServiceTests : IDisposable
         await Assert.ThrowsAsync<InvalidOperationException>(() => new DataPortabilityService(dir).ImportAsync(ms, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task Export_RemovesTheLlmApiKey_ButKeepsTheOtherSettings()
+    {
+        await File.WriteAllTextAsync(Path.Combine(dir, "settings.json"), Envelope("""{"mode":"LIVE","llmProvider":"OpenAI","llmApiKey":"sk-live-1234567890","llmModel":"gpt-4o-mini"}"""));
+
+        var bytes = await new DataPortabilityService(dir).ExportAsync(CancellationToken.None);
+        using var zip = new ZipArchive(new MemoryStream(bytes), ZipArchiveMode.Read);
+        using var reader = new StreamReader(zip.GetEntry("settings.json")!.Open());
+        var exported = await reader.ReadToEndAsync();
+
+        Assert.DoesNotContain("sk-live-1234567890", exported);
+        Assert.Contains("\"llmApiKey\": \"\"", exported);
+        Assert.Contains("\"llmProvider\": \"OpenAI\"", exported);
+        Assert.Contains("\"mode\": \"LIVE\"", exported);
+    }
+
+    [Fact]
+    public async Task Import_OfAnExportWithoutKey_KeepsTheLocallyConfiguredApiKey()
+    {
+        await File.WriteAllTextAsync(Path.Combine(dir, "settings.json"), Envelope("""{"mode":"DEMO","llmProvider":"OpenAI","llmApiKey":"sk-local-0987654321"}"""));
+        var ms = new MemoryStream();
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, true))
+        {
+            Write(zip, "settings.json", Envelope("""{"mode":"DRY_RUN","llmProvider":"OpenAI","llmApiKey":""}"""));
+        }
+        ms.Position = 0;
+
+        await new DataPortabilityService(dir).ImportAsync(ms, CancellationToken.None);
+
+        var imported = await File.ReadAllTextAsync(Path.Combine(dir, "settings.json"));
+        Assert.Contains("sk-local-0987654321", imported);
+        Assert.Contains("DRY_RUN", imported);
+    }
+
     private static void Write(ZipArchive zip, string name, string content)
     {
         using var s = zip.CreateEntry(name).Open();

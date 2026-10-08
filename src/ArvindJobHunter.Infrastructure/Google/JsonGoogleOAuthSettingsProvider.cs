@@ -1,9 +1,10 @@
 using System.Text.Json;
 using ArvindJobHunter.Application.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace ArvindJobHunter.Infrastructure.Google;
 
-public sealed class JsonGoogleOAuthSettingsProvider(string appSettingsPath, GoogleOAuthConfiguration defaults) : IGoogleOAuthSettingsProvider
+public sealed class JsonGoogleOAuthSettingsProvider(string appSettingsPath, GoogleOAuthConfiguration defaults, ILogger<JsonGoogleOAuthSettingsProvider>? logger = null) : IGoogleOAuthSettingsProvider
 {
     private readonly SemaphoreSlim gate = new(1, 1);
     private GoogleOAuthConfiguration? cached;
@@ -32,6 +33,7 @@ public sealed class JsonGoogleOAuthSettingsProvider(string appSettingsPath, Goog
             var updatedJson = JsonSerializer.Serialize(BuildRoot(root, configuration), new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(appSettingsPath, updatedJson + Environment.NewLine, cancellationToken);
             cached = configuration;
+            logger?.LogWarning("Google OAuth client settings were written to {Path}. The client secret is stored there in plain text, so keep this file out of source control (or use user secrets)", appSettingsPath);
         }
         finally { gate.Release(); }
     }
