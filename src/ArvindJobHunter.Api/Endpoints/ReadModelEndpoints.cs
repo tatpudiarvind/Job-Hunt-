@@ -6,6 +6,7 @@ using ArvindJobHunter.Application.Features;
 using ArvindJobHunter.Contracts.Api;
 using ArvindJobHunter.Domain;
 using ArvindJobHunter.Infrastructure.Persistence;
+using System.ComponentModel.DataAnnotations;
 
 namespace ArvindJobHunter.Api.Endpoints;
 
@@ -42,8 +43,10 @@ public static class ReadModelEndpoints
         api.MapGet("/settings", async (IRuntimeSettingsProvider settings, OpenAiOptions openAi, CancellationToken ct) =>
         {
             var current = await settings.GetAsync(ct);
-            return new SettingsResponse(current.Mode.ToString(), current.LlmProvider, !string.IsNullOrWhiteSpace(openAi.ApiKey),
-                current.MasterResumePath, !string.IsNullOrWhiteSpace(current.MasterResumePath) && File.Exists(current.MasterResumePath), dataDirectory);
+            var configured = !string.IsNullOrWhiteSpace(current.LlmApiKey) || !string.IsNullOrWhiteSpace(openAi.ApiKey);
+            return new SettingsResponse(current.Mode.ToString(), current.LlmProvider, current.LlmDisplayName, current.LlmBaseUrl, configured,
+                current.LlmModel, !string.IsNullOrWhiteSpace(openAi.ApiKey), current.MasterResumePath,
+                !string.IsNullOrWhiteSpace(current.MasterResumePath) && File.Exists(current.MasterResumePath), dataDirectory);
         }).WithTags("Settings");
 
         api.MapPut("/settings", async Task<IResult> (UpdateSettingsRequest request, ClaimsPrincipal user, IRuntimeSettingsProvider settings, AuditService audit, CancellationToken ct) =>
@@ -55,17 +58,70 @@ public static class ReadModelEndpoints
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["mode"] = ["Mode must be DEMO, DRY_RUN, or LIVE."] });
             }
 
+            var provider = (request.LlmProvider ?? current.LlmProvider).Trim();
+            if (!string.Equals(provider, "Demo", StringComparison.OrdinalIgnoreCase) && !string.Equals(provider, "OpenAI", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["llmProvider"] = ["LLM provider must be Demo or OpenAI-compatible."] });
+            }
+
+            var displayName = (request.LlmDisplayName ?? current.LlmDisplayName).Trim();
+            var baseUrl = (request.LlmBaseUrl ?? current.LlmBaseUrl).Trim();
+            var apiKey = request.LlmApiKey is null
+                ? current.LlmApiKey
+                : string.IsNullOrWhiteSpace(request.LlmApiKey) && !string.IsNullOrWhiteSpace(current.LlmApiKey)
+                    ? current.LlmApiKey
+                    : request.LlmApiKey.Trim();
+            var model = (request.LlmModel ?? current.LlmModel).Trim();
+            var errors = new Dictionary<string, string[]>();
+
+            if (string.IsNullOrWhiteSpace(displayName)) errors["llmDisplayName"] = ["Display name is required."];
+            if (string.Equals(provider, "OpenAI", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(baseUrl)) errors["llmBaseUrl"] = ["Base URL is required for OpenAI-compatible providers."];
+                else if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out _)) errors["llmBaseUrl"] = ["Base URL must be an absolute URL."];
+                if (string.IsNullOrWhiteSpace(apiKey)) errors["llmApiKey"] = ["API key is required for OpenAI-compatible providers."];
+                if (string.IsNullOrWhiteSpace(model)) errors["llmModel"] = ["Model is required for OpenAI-compatible providers."];
+            }
+
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+
             var updated = new RuntimeSettings
             {
                 Mode = mode,
-                LlmProvider = request.LlmProvider ?? current.LlmProvider,
+                LlmProvider = provider,
+                LlmDisplayName = displayName,
+                LlmBaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? current.LlmBaseUrl : baseUrl,
+                LlmApiKey = apiKey,
+                LlmModel = string.IsNullOrWhiteSpace(model) ? current.LlmModel : model,
                 MasterResumePath = request.MasterResumePath ?? current.MasterResumePath,
                 QualificationThreshold = current.QualificationThreshold,
                 ApprovalTtlHours = current.ApprovalTtlHours
             };
             await settings.SaveAsync(updated, ct);
-            await audit.RecordAsync(user.UserId(), "SETTINGS_UPDATED", "RuntimeSettings", "local", "SUCCESS", $"Mode={updated.Mode}; Llm={updated.LlmProvider}", ct);
+            await audit.RecordAsync(user.UserId(), "SETTINGS_UPDATED", "RuntimeSettings", "local", "SUCCESS", $"Mode={updated.Mode}; Llm={updated.LlmProvider}; DisplayName={updated.LlmDisplayName}; BaseUrl={updated.LlmBaseUrl}; Model={updated.LlmModel}", ct);
             return Results.Ok(updated);
+        }).WithTags("Settings");
+
+        api.MapGet("/settings/google-oauth", async (IGoogleOAuthSettingsProvider googleSettings, CancellationToken ct) =>
+        {
+            var current = await googleSettings.GetAsync(ct);
+            return new GoogleOAuthSettingsResponse(current.ClientId, current.ClientSecret, current.RedirectUri,
+                !string.IsNullOrWhiteSpace(current.ClientId) && !string.IsNullOrWhiteSpace(current.ClientSecret));
+        }).WithTags("Settings");
+
+        api.MapPut("/settings/google-oauth", async Task<IResult> (UpdateGoogleOAuthSettingsRequest request, ClaimsPrincipal user, IGoogleOAuthSettingsProvider googleSettings, AuditService audit, CancellationToken ct) =>
+        {
+            var errors = new Dictionary<string, string[]>();
+            if (string.IsNullOrWhiteSpace(request.ClientId)) errors["clientId"] = ["Client ID is required."];
+            if (string.IsNullOrWhiteSpace(request.ClientSecret)) errors["clientSecret"] = ["Client secret is required."];
+            if (string.IsNullOrWhiteSpace(request.RedirectUri)) errors["redirectUri"] = ["Redirect URI is required."];
+            else if (!Uri.TryCreate(request.RedirectUri, UriKind.Absolute, out _)) errors["redirectUri"] = ["Redirect URI must be an absolute URL."];
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+
+            var updated = new GoogleOAuthConfiguration(request.ClientId.Trim(), request.ClientSecret.Trim(), request.RedirectUri.Trim());
+            await googleSettings.SaveAsync(updated, ct);
+            await audit.RecordAsync(user.UserId(), "GOOGLE_OAUTH_SETTINGS_UPDATED", "GoogleOAuth", "local", "SUCCESS", $"RedirectUri={updated.RedirectUri}; ClientIdLength={updated.ClientId.Length}", ct);
+            return Results.Ok(new GoogleOAuthSettingsResponse(updated.ClientId, updated.ClientSecret, updated.RedirectUri, true));
         }).WithTags("Settings");
 
         api.MapPost("/settings/master-resume", async Task<IResult> (HttpRequest request, ClaimsPrincipal user, IRuntimeSettingsProvider settings, AuditService audit, CancellationToken ct) =>

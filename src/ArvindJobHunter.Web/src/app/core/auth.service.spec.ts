@@ -28,6 +28,24 @@ describe('AuthService', () => {
     expect(service.token()).toBeNull();
   });
 
+  it('signup posts credentials to the signup endpoint', async () => {
+    const pending = service.signup('arvind', 'correct-horse-battery-staple');
+    const req = http.expectOne(`${environment.apiBaseUrl}/api/auth/signup`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ username: 'arvind', password: 'correct-horse-battery-staple' });
+    req.flush(null, { status: 204, statusText: 'No Content' });
+    await pending;
+  });
+
+  it('resetPassword posts the new password payload to the reset endpoint', async () => {
+    const pending = service.resetPassword('arvind', 'new-correct-horse-battery-staple');
+    const req = http.expectOne(`${environment.apiBaseUrl}/api/auth/reset-password`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ username: 'arvind', newPassword: 'new-correct-horse-battery-staple' });
+    req.flush(null, { status: 204, statusText: 'No Content' });
+    await pending;
+  });
+
   it('login stores the session token in sessionStorage and the signal', async () => {
     const pending = service.login('arvind', 'secret');
     const req = http.expectOne(`${environment.apiBaseUrl}/api/auth/login`);

@@ -23,24 +23,26 @@ public sealed class GoogleTokenDocument
     public DateTimeOffset? ConnectedAt { get; init; }
 }
 
-public sealed class GoogleOAuthService(HttpClient httpClient, IDataProtector protector, IJsonStore<GoogleTokenDocument> store, GoogleOAuthOptions options) : IGoogleOAuthService
+public sealed class GoogleOAuthService(HttpClient httpClient, IDataProtector protector, IJsonStore<GoogleTokenDocument> store, IGoogleOAuthSettingsProvider settingsProvider) : IGoogleOAuthService
 {
+    private const string Scopes = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/userinfo.email";
     private static readonly TimeSpan StateLifetime = TimeSpan.FromMinutes(10);
     private readonly ConcurrentDictionary<string, (Guid UserId, DateTimeOffset IssuedAt)> states = new();
     private string? cachedAccessToken;
     private DateTimeOffset accessTokenExpiry;
 
-    private bool Configured => !string.IsNullOrWhiteSpace(options.ClientId) && !string.IsNullOrWhiteSpace(options.ClientSecret);
-
     public async Task<GoogleConnectionStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
         var token = await store.LoadAsync(cancellationToken);
-        return new GoogleConnectionStatus(Configured, !string.IsNullOrWhiteSpace(token.ProtectedRefreshToken), token.AccountEmail);
+        var options = await settingsProvider.GetAsync(cancellationToken);
+        var configured = !string.IsNullOrWhiteSpace(options.ClientId) && !string.IsNullOrWhiteSpace(options.ClientSecret);
+        return new GoogleConnectionStatus(configured, !string.IsNullOrWhiteSpace(token.ProtectedRefreshToken), token.AccountEmail);
     }
 
     public async Task<Uri> CreateAuthorizationUriAsync(Guid userId, CancellationToken cancellationToken)
     {
-        if (!Configured) throw new InvalidOperationException("Google OAuth is not configured. Set Google:ClientId and Google:ClientSecret.");
+        var options = await settingsProvider.GetAsync(cancellationToken);
+        if (!IsConfigured(options)) throw new InvalidOperationException("Google OAuth is not configured. Set Google:ClientId and Google:ClientSecret.");
         PruneStates();
         var state = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         states[state] = (userId, DateTimeOffset.UtcNow);
@@ -49,7 +51,7 @@ public sealed class GoogleOAuthService(HttpClient httpClient, IDataProtector pro
             ["client_id"] = options.ClientId,
             ["redirect_uri"] = options.RedirectUri,
             ["response_type"] = "code",
-            ["scope"] = options.Scopes,
+            ["scope"] = Scopes,
             ["access_type"] = "offline",
             ["prompt"] = "consent",
             ["state"] = state
@@ -59,6 +61,7 @@ public sealed class GoogleOAuthService(HttpClient httpClient, IDataProtector pro
 
     public async Task<bool> CompleteAsync(string code, string state, CancellationToken cancellationToken)
     {
+        var options = await settingsProvider.GetAsync(cancellationToken);
         if (!states.TryRemove(state, out var issued) || issued.IssuedAt.Add(StateLifetime) < DateTimeOffset.UtcNow) return false;
         var token = await ExchangeAsync(new Dictionary<string, string>
         {
@@ -100,7 +103,8 @@ public sealed class GoogleOAuthService(HttpClient httpClient, IDataProtector pro
     {
         if (cachedAccessToken is not null && accessTokenExpiry > DateTimeOffset.UtcNow) return cachedAccessToken;
         var document = await store.LoadAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(document.ProtectedRefreshToken) || !Configured) return null;
+        var options = await settingsProvider.GetAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(document.ProtectedRefreshToken) || !IsConfigured(options)) return null;
         var refresh = protector.Unprotect(document.ProtectedRefreshToken);
         var token = await ExchangeAsync(new Dictionary<string, string>
         {
@@ -114,6 +118,8 @@ public sealed class GoogleOAuthService(HttpClient httpClient, IDataProtector pro
         accessTokenExpiry = DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn - 60);
         return cachedAccessToken;
     }
+
+    private static bool IsConfigured(GoogleOAuthConfiguration options) => !string.IsNullOrWhiteSpace(options.ClientId) && !string.IsNullOrWhiteSpace(options.ClientSecret);
 
     private async Task<TokenResponse?> ExchangeAsync(Dictionary<string, string> form, CancellationToken cancellationToken)
     {

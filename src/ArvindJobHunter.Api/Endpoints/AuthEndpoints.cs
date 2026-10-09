@@ -19,6 +19,18 @@ public static class AuthEndpoints
                 ? Results.NoContent()
                 : Results.BadRequest(new { error = "Setup requires a username and a password of at least 12 characters, and can only run once." }));
 
+        group.MapPost("/signup", async Task<IResult> (AuthRequest request, ILocalAuthenticationService service, CancellationToken ct) =>
+            await service.SignupAsync(request.Username, request.Password, ct)
+                ? Results.NoContent()
+                : Results.BadRequest(new { error = "Sign up requires a username and a password of at least 12 characters, and is only available before the local account is created." }))
+            .RequireRateLimiting("auth");
+
+        group.MapPost("/reset-password", async Task<IResult> (ResetPasswordRequest request, ILocalAuthenticationService service, CancellationToken ct) =>
+            await service.ResetPasswordAsync(request.Username, request.NewPassword, ct)
+                ? Results.NoContent()
+                : Results.BadRequest(new { error = "Reset password requires the existing username and a new password of at least 12 characters." }))
+            .RequireRateLimiting("auth");
+
         group.MapPost("/login", async Task<IResult> (AuthRequest request, ILocalAuthenticationService service, CancellationToken ct) =>
         {
             var session = await service.LoginAsync(request.Username, request.Password, ct);

@@ -10,6 +10,7 @@ public sealed class LlmProviderResolver(IEnumerable<ILlmProvider> providers, IRu
         var current = await settings.GetAsync(cancellationToken);
         var list = providers.ToList();
         var requested = list.FirstOrDefault(p => string.Equals(p.Name, current.LlmProvider, StringComparison.OrdinalIgnoreCase));
+        if (requested is OpenAiLlmProvider openAi && openAi.CanResolve(current)) return openAi;
         if (requested is { IsConfigured: true }) return requested;
         return list.First(p => p.Name == "Demo");
     }

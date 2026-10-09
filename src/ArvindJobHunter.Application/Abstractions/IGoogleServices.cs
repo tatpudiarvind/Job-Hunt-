@@ -2,6 +2,14 @@ namespace ArvindJobHunter.Application.Abstractions;
 
 public sealed record GoogleConnectionStatus(bool Configured, bool Connected, string? AccountEmail);
 
+public sealed record GoogleOAuthConfiguration(string ClientId, string ClientSecret, string RedirectUri);
+
+public interface IGoogleOAuthSettingsProvider
+{
+    Task<GoogleOAuthConfiguration> GetAsync(CancellationToken cancellationToken);
+    Task SaveAsync(GoogleOAuthConfiguration configuration, CancellationToken cancellationToken);
+}
+
 public interface IGoogleOAuthService
 {
     Task<GoogleConnectionStatus> GetStatusAsync(CancellationToken cancellationToken);

@@ -16,7 +16,10 @@ public sealed class LocalAuthenticationService(IJsonStore<LocalAccountRecord> st
     public async Task<bool> IsConfiguredAsync(CancellationToken cancellationToken) =>
         (await AccountAsync(cancellationToken)).Username.Length > 0;
 
-    public async Task<bool> SetupAsync(string username, string password, CancellationToken cancellationToken)
+    public Task<bool> SetupAsync(string username, string password, CancellationToken cancellationToken) =>
+        SignupAsync(username, password, cancellationToken);
+
+    public async Task<bool> SignupAsync(string username, string password, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(username) || password.Length < 12) return false;
         await gate.WaitAsync(cancellationToken);
@@ -24,13 +27,23 @@ public sealed class LocalAuthenticationService(IJsonStore<LocalAccountRecord> st
         {
             account ??= await store.LoadAsync(cancellationToken);
             if (account.Username.Length > 0) return false;
-            var salt = RandomNumberGenerator.GetBytes(16);
-            account = new LocalAccountRecord
-            {
-                Username = username.Trim(),
-                Salt = Convert.ToBase64String(salt),
-                PasswordHash = Convert.ToBase64String(Hash(password, salt))
-            };
+            account = CreateAccount(username, password);
+            await store.SaveAsync(account, cancellationToken);
+            return true;
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task<bool> ResetPasswordAsync(string username, string newPassword, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(username) || newPassword.Length < 12) return false;
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            account ??= await store.LoadAsync(cancellationToken);
+            if (account.Username.Length == 0 || !string.Equals(account.Username, username.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+            account = CreateAccount(account.Username, newPassword);
+            sessions.Clear();
             await store.SaveAsync(account, cancellationToken);
             return true;
         }
@@ -75,6 +88,17 @@ public sealed class LocalAuthenticationService(IJsonStore<LocalAccountRecord> st
         {
             sessions.TryRemove(expired, out _);
         }
+    }
+
+    private static LocalAccountRecord CreateAccount(string username, string password)
+    {
+        var salt = RandomNumberGenerator.GetBytes(16);
+        return new LocalAccountRecord
+        {
+            Username = username.Trim(),
+            Salt = Convert.ToBase64String(salt),
+            PasswordHash = Convert.ToBase64String(Hash(password, salt))
+        };
     }
 
     private static byte[] Hash(string password, byte[] salt) =>

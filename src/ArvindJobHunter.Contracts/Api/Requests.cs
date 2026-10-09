@@ -4,6 +4,8 @@ namespace ArvindJobHunter.Contracts.Api;
 
 public sealed record AuthRequest([property: Required] string Username, [property: Required] string Password);
 
+public sealed record ResetPasswordRequest([property: Required] string Username, [property: Required] string NewPassword);
+
 public sealed record AuthStatusResponse(bool Configured, bool Authenticated);
 
 public sealed record SessionResponse(string Token, DateTimeOffset ExpiresAt, Guid UserId);
@@ -40,9 +42,16 @@ public sealed record UpdateEmailDraftRequest(
     [property: Required] string Subject,
     [property: Required] string Body);
 
-public sealed record SettingsResponse(string Mode, string LlmProvider, bool OpenAiConfigured, string MasterResumePath, bool MasterResumeExists, string DataDirectory);
+public sealed record SettingsResponse(string Mode, string LlmProvider, string LlmDisplayName, string LlmBaseUrl, bool LlmConfigured, string LlmModel, bool OpenAiConfigured, string MasterResumePath, bool MasterResumeExists, string DataDirectory);
 
-public sealed record UpdateSettingsRequest(string? Mode, string? LlmProvider, string? MasterResumePath);
+public sealed record GoogleOAuthSettingsResponse(string ClientId, string ClientSecret, string RedirectUri, bool Configured);
+
+public sealed record UpdateSettingsRequest(string? Mode, string? LlmProvider, string? LlmDisplayName, string? LlmBaseUrl, string? LlmApiKey, string? LlmModel, string? MasterResumePath);
+
+public sealed record UpdateGoogleOAuthSettingsRequest(
+    [property: Required] string ClientId,
+    [property: Required] string ClientSecret,
+    [property: Required] string RedirectUri);
 
 public sealed record DashboardResponse(
     int Jobs,
