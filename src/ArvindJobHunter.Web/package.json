@@ -5,7 +5,8 @@
   "scripts": {
     "start": "ng serve",
     "build": "ng build",
-    "test": "ng test"
+    "test": "ng test",
+    "dev": "ng serve --open"
   },
   "dependencies": {
     "@angular/animations": "^22.0.0",

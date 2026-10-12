@@ -13,7 +13,7 @@ public sealed class JsonGoogleOAuthSettingsProvider(string appSettingsPath, Goog
         await gate.WaitAsync(cancellationToken);
         try
         {
-            if (cached is not null) return cached;
+            if (cached is not null && !string.IsNullOrWhiteSpace(cached.ClientId)) return cached;
             cached = await LoadFromFileAsync(cancellationToken);
             return cached;
         }
@@ -31,6 +31,7 @@ public sealed class JsonGoogleOAuthSettingsProvider(string appSettingsPath, Goog
 
             var updatedJson = JsonSerializer.Serialize(BuildRoot(root, configuration), new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(appSettingsPath, updatedJson + Environment.NewLine, cancellationToken);
+            // Clear cache and immediately load from file to ensure next read gets the saved values
             cached = configuration;
         }
         finally { gate.Release(); }

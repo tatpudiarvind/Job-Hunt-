@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using ArvindJobHunter.Application.Abstractions;
 using Microsoft.AspNetCore.DataProtection;
@@ -13,7 +14,7 @@ public sealed class GoogleOAuthOptions
     public string ClientId { get; init; } = "";
     public string ClientSecret { get; init; } = "";
     public string RedirectUri { get; init; } = "http://localhost:5228/api/integrations/google/callback";
-    public string Scopes { get; init; } = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/userinfo.email";
+    public string Scopes { get; init; } = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email";
 }
 
 public sealed class GoogleTokenDocument
@@ -25,7 +26,7 @@ public sealed class GoogleTokenDocument
 
 public sealed class GoogleOAuthService(HttpClient httpClient, IDataProtector protector, IJsonStore<GoogleTokenDocument> store, IGoogleOAuthSettingsProvider settingsProvider) : IGoogleOAuthService
 {
-    private const string Scopes = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/userinfo.email";
+    private const string Scopes = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email";
     private static readonly TimeSpan StateLifetime = TimeSpan.FromMinutes(10);
     private readonly ConcurrentDictionary<string, (Guid UserId, DateTimeOffset IssuedAt)> states = new();
     private string? cachedAccessToken;
@@ -59,11 +60,15 @@ public sealed class GoogleOAuthService(HttpClient httpClient, IDataProtector pro
         return new Uri("https://accounts.google.com/o/oauth2/v2/auth?" + query);
     }
 
-    public async Task<bool> CompleteAsync(string code, string state, CancellationToken cancellationToken)
+    public async Task<GoogleOAuthCompletionResult> CompleteAsync(string code, string state, CancellationToken cancellationToken)
     {
         var options = await settingsProvider.GetAsync(cancellationToken);
-        if (!states.TryRemove(state, out var issued) || issued.IssuedAt.Add(StateLifetime) < DateTimeOffset.UtcNow) return false;
-        var token = await ExchangeAsync(new Dictionary<string, string>
+        if (!states.TryRemove(state, out var issued) || issued.IssuedAt.Add(StateLifetime) < DateTimeOffset.UtcNow)
+        {
+            return new GoogleOAuthCompletionResult(false, "The Google sign-in session expired or is invalid. Please try connecting again.");
+        }
+
+        var exchange = await ExchangeAsync(new Dictionary<string, string>
         {
             ["code"] = code,
             ["client_id"] = options.ClientId,
@@ -71,13 +76,21 @@ public sealed class GoogleOAuthService(HttpClient httpClient, IDataProtector pro
             ["redirect_uri"] = options.RedirectUri,
             ["grant_type"] = "authorization_code"
         }, cancellationToken);
-        if (token?.RefreshToken is null) return false;
+        if (exchange.Token is null)
+        {
+            return new GoogleOAuthCompletionResult(false, exchange.Error ?? "Google rejected the authorization code exchange.");
+        }
 
-        var email = await FetchEmailAsync(token.AccessToken, cancellationToken);
-        cachedAccessToken = token.AccessToken;
-        accessTokenExpiry = DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn - 60);
-        await store.SaveAsync(new GoogleTokenDocument { ProtectedRefreshToken = protector.Protect(token.RefreshToken), AccountEmail = email, ConnectedAt = DateTimeOffset.UtcNow }, cancellationToken);
-        return true;
+        if (string.IsNullOrWhiteSpace(exchange.Token.RefreshToken))
+        {
+            return new GoogleOAuthCompletionResult(false, "Google did not return a refresh token. Revoke the app in your Google account permissions, then connect again.");
+        }
+
+        var email = await FetchEmailAsync(exchange.Token.AccessToken, cancellationToken);
+        cachedAccessToken = exchange.Token.AccessToken;
+        accessTokenExpiry = DateTimeOffset.UtcNow.AddSeconds(exchange.Token.ExpiresIn - 60);
+        await store.SaveAsync(new GoogleTokenDocument { ProtectedRefreshToken = protector.Protect(exchange.Token.RefreshToken), AccountEmail = email, ConnectedAt = DateTimeOffset.UtcNow }, cancellationToken);
+        return new GoogleOAuthCompletionResult(true, null);
     }
 
     public async Task RevokeAsync(CancellationToken cancellationToken)
@@ -106,26 +119,31 @@ public sealed class GoogleOAuthService(HttpClient httpClient, IDataProtector pro
         var options = await settingsProvider.GetAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(document.ProtectedRefreshToken) || !IsConfigured(options)) return null;
         var refresh = protector.Unprotect(document.ProtectedRefreshToken);
-        var token = await ExchangeAsync(new Dictionary<string, string>
+        var exchange = await ExchangeAsync(new Dictionary<string, string>
         {
             ["refresh_token"] = refresh,
             ["client_id"] = options.ClientId,
             ["client_secret"] = options.ClientSecret,
             ["grant_type"] = "refresh_token"
         }, cancellationToken);
-        if (token is null) return null;
-        cachedAccessToken = token.AccessToken;
-        accessTokenExpiry = DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn - 60);
+        if (exchange.Token is null) return null;
+        cachedAccessToken = exchange.Token.AccessToken;
+        accessTokenExpiry = DateTimeOffset.UtcNow.AddSeconds(exchange.Token.ExpiresIn - 60);
         return cachedAccessToken;
     }
 
     private static bool IsConfigured(GoogleOAuthConfiguration options) => !string.IsNullOrWhiteSpace(options.ClientId) && !string.IsNullOrWhiteSpace(options.ClientSecret);
 
-    private async Task<TokenResponse?> ExchangeAsync(Dictionary<string, string> form, CancellationToken cancellationToken)
+    private async Task<TokenExchangeResult> ExchangeAsync(Dictionary<string, string> form, CancellationToken cancellationToken)
     {
         using var response = await httpClient.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(form), cancellationToken);
-        if (!response.IsSuccessStatusCode) return null;
-        return await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return new TokenExchangeResult(await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: cancellationToken), null);
+        }
+
+        var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+        return new TokenExchangeResult(null, TryGetErrorMessage(payload) ?? $"Google token endpoint returned {(int)response.StatusCode} {response.ReasonPhrase}.");
     }
 
     private async Task<string?> FetchEmailAsync(string accessToken, CancellationToken cancellationToken)
@@ -144,6 +162,23 @@ public sealed class GoogleOAuthService(HttpClient httpClient, IDataProtector pro
         }
     }
 
+    private static string? TryGetErrorMessage(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return null;
+        try
+        {
+            var error = JsonSerializer.Deserialize<TokenErrorResponse>(payload);
+            if (error is null) return null;
+            return string.IsNullOrWhiteSpace(error.ErrorDescription)
+                ? error.Error
+                : $"{error.Error}: {error.ErrorDescription}";
+        }
+        catch (JsonException)
+        {
+            return payload;
+        }
+    }
+
     private void PruneStates()
     {
         var cutoff = DateTimeOffset.UtcNow.Subtract(StateLifetime);
@@ -154,6 +189,12 @@ public sealed class GoogleOAuthService(HttpClient httpClient, IDataProtector pro
         [property: JsonPropertyName("access_token")] string AccessToken,
         [property: JsonPropertyName("refresh_token")] string? RefreshToken,
         [property: JsonPropertyName("expires_in")] int ExpiresIn);
+
+    private sealed record TokenExchangeResult(TokenResponse? Token, string? Error);
+
+    private sealed record TokenErrorResponse(
+        [property: JsonPropertyName("error")] string? Error,
+        [property: JsonPropertyName("error_description")] string? ErrorDescription);
 
     private sealed record UserInfo([property: JsonPropertyName("email")] string? Email);
 }
