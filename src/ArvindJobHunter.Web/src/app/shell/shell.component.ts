@@ -114,6 +114,7 @@ export class ShellComponent {
   readonly secondary: NavItem[] = [
     { path: '/profile', label: 'Profile', icon: 'person' },
     { path: '/activity', label: 'Activity', icon: 'history' },
+    { path: '/help', label: 'Help', icon: 'help' },
     { path: '/settings', label: 'Settings', icon: 'settings' }
   ];
 

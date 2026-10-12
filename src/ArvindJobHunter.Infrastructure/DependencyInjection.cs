@@ -68,7 +68,7 @@ public static class DependencyInjection
 
         services.AddSingleton<IGoogleOAuthSettingsProvider>(_ => new JsonGoogleOAuthSettingsProvider(appSettingsPath, googleOptions));
         services.AddHttpClient("GoogleOAuth");
-        services.AddTransient<IGoogleOAuthService>(sp => new GoogleOAuthService(
+        services.AddSingleton<IGoogleOAuthService>(sp => new GoogleOAuthService(
             sp.GetRequiredService<IHttpClientFactory>().CreateClient("GoogleOAuth"),
             sp.GetRequiredService<IDataProtectionProvider>().CreateProtector("ArvindJobHunter.GoogleOAuth.v1"),
             sp.GetRequiredService<IJsonStore<GoogleTokenDocument>>(),
