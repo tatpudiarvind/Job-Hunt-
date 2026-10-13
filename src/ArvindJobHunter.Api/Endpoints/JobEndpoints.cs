@@ -47,6 +47,19 @@ public static class JobEndpoints
             }
         });
 
+        group.MapPost("/discover", async Task<IResult> (DiscoverJobsRequest? request, ClaimsPrincipal user, JobDiscoveryService service, CancellationToken ct) =>
+        {
+            try
+            {
+                var result = await service.DiscoverAsync(user.UserId(), request?.MaxResults ?? 20, ct);
+                return Results.Ok(result);
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["maxResults"] = [ex.Message] });
+            }
+        });
+
         group.MapPost("/{id:guid}/analyze", async Task<IResult> (Guid id, ClaimsPrincipal user, AgentOrchestrator orchestrator, CancellationToken ct) =>
         {
             try
@@ -98,4 +111,5 @@ public static class JobEndpoints
 
     public sealed record RecruiterEmailRequest(string? Recipient);
     public sealed record ImportJobUrlRequest(string Url);
+    public sealed record DiscoverJobsRequest(int? MaxResults);
 }

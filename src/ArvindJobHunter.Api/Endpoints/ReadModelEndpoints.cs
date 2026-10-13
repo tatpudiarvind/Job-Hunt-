@@ -79,7 +79,7 @@ public static class ReadModelEndpoints
 
             if (errors.Count > 0) return Results.ValidationProblem(errors);
 
-            var updated = current with
+            var updated = new RuntimeSettings
             {
                 Mode = mode,
                 LlmProvider = provider,
@@ -87,12 +87,58 @@ public static class ReadModelEndpoints
                 LlmBaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? current.LlmBaseUrl : baseUrl,
                 LlmApiKey = apiKey,
                 LlmModel = string.IsNullOrWhiteSpace(model) ? current.LlmModel : model,
-                MasterResumePath = request.MasterResumePath ?? current.MasterResumePath
+                MasterResumePath = request.MasterResumePath ?? current.MasterResumePath,
+                QualificationThreshold = current.QualificationThreshold,
+                ApprovalTtlHours = current.ApprovalTtlHours
             };
             await settings.SaveAsync(updated, ct);
             await audit.RecordAsync(user.UserId(), "SETTINGS_UPDATED", "RuntimeSettings", "local", "SUCCESS", $"Mode={updated.Mode}; Llm={updated.LlmProvider}; DisplayName={updated.LlmDisplayName}; BaseUrl={updated.LlmBaseUrl}; Model={updated.LlmModel}", ct);
             // Same shape as GET: the API key is write-only and never echoed back to the browser.
             return Results.Ok(ToSettingsResponse(updated, openAi, dataDirectory));
+        }).WithTags("Settings");
+
+        api.MapGet("/settings/job-search-preferences", async (IJobSearchPreferencesProvider preferences, CancellationToken ct) =>
+            ToJobSearchPreferencesResponse(await preferences.GetAsync(ct))).WithTags("Settings");
+
+        api.MapPut("/settings/job-search-preferences", async Task<IResult> (UpdateJobSearchPreferencesRequest request, ClaimsPrincipal user, IJobSearchPreferencesProvider preferences, AuditService audit, CancellationToken ct) =>
+        {
+            var countries = CleanList(request.PreferredCountries);
+            var roles = CleanList(request.PreferredRoles);
+            var linkedInUrl = CleanOptional(request.LinkedInProfileUrl);
+            var workMode = CleanOptional(request.WorkMode);
+            var salaryExpectation = CleanOptional(request.SalaryExpectation);
+            var workAuthorization = CleanOptional(request.WorkAuthorization);
+            var errors = new Dictionary<string, string[]>();
+
+            if (linkedInUrl is not null)
+            {
+                if (!Uri.TryCreate(linkedInUrl, UriKind.Absolute, out var linkedInUri)) errors["linkedInProfileUrl"] = ["LinkedIn profile URL must be an absolute URL."];
+                else if (!(linkedInUri.Host.Contains("linkedin.com", StringComparison.OrdinalIgnoreCase) || linkedInUri.Host.Contains("lnkd.in", StringComparison.OrdinalIgnoreCase))) errors["linkedInProfileUrl"] = ["LinkedIn profile URL must point to LinkedIn."];
+            }
+
+            if (workMode is not null && !new[] { "Remote", "Hybrid", "Onsite", "Flexible" }.Contains(workMode, StringComparer.OrdinalIgnoreCase))
+            {
+                errors["workMode"] = ["Work mode must be Remote, Hybrid, Onsite, or Flexible."];
+            }
+
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+
+            var current = await preferences.GetAsync(ct);
+            var updated = new JobSearchPreferences
+            {
+                PreferredCountries = countries,
+                LinkedInProfileUrl = linkedInUrl,
+                ResumeLinkedInProfileUrl = current.ResumeLinkedInProfileUrl,
+                PreferredRoles = roles,
+                WorkMode = workMode,
+                SalaryExpectation = salaryExpectation,
+                WorkAuthorization = workAuthorization
+            };
+
+            await preferences.SaveAsync(updated, ct);
+            await audit.RecordAsync(user.UserId(), "JOB_SEARCH_PREFERENCES_UPDATED", "JobSearchPreferences", "local", "SUCCESS",
+                $"Countries={updated.PreferredCountries.Count}; Roles={updated.PreferredRoles.Count}; WorkMode={updated.WorkMode ?? "(none)"}; LinkedIn={(updated.EffectiveLinkedInProfileUrl is null ? "missing" : "set")}", ct);
+            return Results.Ok(ToJobSearchPreferencesResponse(updated));
         }).WithTags("Settings");
 
         api.MapGet("/settings/google-oauth", async (IGoogleOAuthSettingsProvider googleSettings, CancellationToken ct) =>
@@ -117,7 +163,7 @@ public static class ReadModelEndpoints
             return Results.Ok(new GoogleOAuthSettingsResponse(updated.ClientId, updated.ClientSecret, updated.RedirectUri, true));
         }).WithTags("Settings");
 
-        api.MapPost("/settings/master-resume", async Task<IResult> (HttpRequest request, ClaimsPrincipal user, IRuntimeSettingsProvider settings, AuditService audit, CancellationToken ct) =>
+        api.MapPost("/settings/master-resume", async Task<IResult> (HttpRequest request, ClaimsPrincipal user, IRuntimeSettingsProvider settings, ResumeAnalysisService analysis, AuditService audit, CancellationToken ct) =>
         {
             if (!request.HasFormContentType || request.Form.Files.Count != 1)
             {
@@ -147,10 +193,22 @@ public static class ReadModelEndpoints
 
             var current = await settings.GetAsync(ct);
             // Only the path changes; LLM provider, model and API key must survive a resume upload.
-            var updated = current with { MasterResumePath = targetPath };
+            var updated = new RuntimeSettings
+            {
+                Mode = current.Mode,
+                LlmProvider = current.LlmProvider,
+                LlmDisplayName = current.LlmDisplayName,
+                LlmBaseUrl = current.LlmBaseUrl,
+                LlmApiKey = current.LlmApiKey,
+                LlmModel = current.LlmModel,
+                MasterResumePath = targetPath,
+                QualificationThreshold = current.QualificationThreshold,
+                ApprovalTtlHours = current.ApprovalTtlHours
+            };
             await settings.SaveAsync(updated, ct);
+            var summary = await analysis.AnalyzeAndSaveAsync(targetPath, user.UserId(), ct);
             await audit.RecordAsync(user.UserId(), "MASTER_RESUME_UPLOADED", "RuntimeSettings", "local", "SUCCESS", $"{file.FileName} ({file.Length} bytes) -> {targetPath}", ct);
-            return Results.Ok(new { masterResumePath = targetPath, fileName = file.FileName, size = file.Length });
+            return Results.Ok(new { masterResumePath = targetPath, fileName = file.FileName, size = file.Length, analysis = summary });
         }).WithTags("Settings").DisableAntiforgery();
 
         api.MapGet("/data/export", async (ClaimsPrincipal user, DataPortabilityService portability, AuditService audit, CancellationToken ct) =>
@@ -239,4 +297,18 @@ public static class ReadModelEndpoints
             !string.IsNullOrWhiteSpace(current.LlmApiKey) || !string.IsNullOrWhiteSpace(openAi.ApiKey),
             current.LlmModel, !string.IsNullOrWhiteSpace(openAi.ApiKey), current.MasterResumePath,
             !string.IsNullOrWhiteSpace(current.MasterResumePath) && File.Exists(current.MasterResumePath), dataDirectory);
+
+    private static JobSearchPreferencesResponse ToJobSearchPreferencesResponse(JobSearchPreferences preferences) =>
+        new(preferences.PreferredCountries, preferences.LinkedInProfileUrl, preferences.ResumeLinkedInProfileUrl,
+            preferences.EffectiveLinkedInProfileUrl, preferences.PreferredRoles, preferences.WorkMode,
+            preferences.SalaryExpectation, preferences.WorkAuthorization);
+
+    private static IReadOnlyList<string> CleanList(IReadOnlyList<string>? values) =>
+        (values ?? [])
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Select(v => v.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

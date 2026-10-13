@@ -30,6 +30,7 @@ public sealed partial class DemoLlmProvider : ILlmProvider
             "ResumeChanges" => ProposeResumeChanges(user),
             "CoverLetter" => CoverLetter(user),
             "RecruiterEmail" => RecruiterEmail(user),
+            "ResumeProfile" => ResumeProfile(user),
             _ => JsonSerializer.Serialize(new { text = "Demo provider response.", echo = user.Length })
         };
 
@@ -116,6 +117,31 @@ public sealed partial class DemoLlmProvider : ILlmProvider
         var body = $"Hello,\n\nI noticed the {s.GetValueOrDefault("JOB_TITLE", "open")} role at {s.GetValueOrDefault("COMPANY", "your company")} and believe my background in " +
                    $"{string.Join(", ", SplitList(s.GetValueOrDefault("MATCHED_SKILLS", "")).Take(4))} is a strong fit. Could we arrange a short call?\n\nBest regards,\n{s.GetValueOrDefault("CANDIDATE_NAME", "The Candidate")}";
         return JsonSerializer.Serialize(new { subject = $"Regarding {s.GetValueOrDefault("JOB_TITLE", "the role")} at {s.GetValueOrDefault("COMPANY", "your company")}", body });
+    }
+
+    private static string ResumeProfile(string input)
+    {
+        var text = ParseSections(input).GetValueOrDefault("RESUME_TEXT", input);
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var name = lines.FirstOrDefault(l => l.Length is > 3 and < 80 && !l.Contains('@') && !Regex.IsMatch(l, "\\d{3,}")) ?? "Candidate";
+        var currentRole = lines.Skip(1).FirstOrDefault(l => l.Length is > 3 and < 120 && !l.Contains('@')) ?? "Software Engineer";
+        var skills = KnownSkills.Where(s => text.Contains(s, StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToList();
+        var experience = lines.Where(l => Regex.IsMatch(l, @"\b(20\d{2}|19\d{2}|present|current)\b", RegexOptions.IgnoreCase) || l.Contains(" at ", StringComparison.OrdinalIgnoreCase)).Take(4).ToList();
+        var education = lines.Where(l => l.Contains("Bachelor", StringComparison.OrdinalIgnoreCase) || l.Contains("Master", StringComparison.OrdinalIgnoreCase) || l.Contains("University", StringComparison.OrdinalIgnoreCase)).Take(3).ToList();
+        var certifications = lines.Where(l => l.Contains("cert", StringComparison.OrdinalIgnoreCase) || l.Contains("azure", StringComparison.OrdinalIgnoreCase) || l.Contains("aws", StringComparison.OrdinalIgnoreCase)).Take(3).ToList();
+        var preferences = new[] { "Remote", "Hybrid", "UK", "Europe", "Visa Sponsorship", "Relocation" }
+            .Where(p => text.Contains(p, StringComparison.OrdinalIgnoreCase)).ToList();
+        return JsonSerializer.Serialize(new
+        {
+            name,
+            currentRole,
+            currentCompany = (string?)null,
+            skills,
+            experience,
+            education,
+            certifications,
+            preferences
+        });
     }
 
     private static Dictionary<string, string> ParseSections(string input)

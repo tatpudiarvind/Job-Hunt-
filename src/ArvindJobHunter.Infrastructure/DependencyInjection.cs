@@ -31,6 +31,7 @@ public static class DependencyInjection
         AddStore<LocalAccountRecord>(services, dataDirectory, "account.json");
         AddStore<GoogleTokenDocument>(services, dataDirectory, "google-token.json");
         AddStore<RuntimeSettings>(services, dataDirectory, "settings.json");
+        AddStore<JobSearchPreferences>(services, dataDirectory, "job-search-preferences.json");
         AddListRepository<CandidateFact>(services, dataDirectory, "candidate-facts.json", f => f.Id);
         AddListRepository<Job>(services, dataDirectory, "jobs.json", j => j.Id);
         AddListRepository<JobApplication>(services, dataDirectory, "applications.json", a => a.Id);
@@ -47,6 +48,9 @@ public static class DependencyInjection
         services.AddSingleton(sp => new DataPortabilityService(dataDirectory, sp.GetRequiredService<ILogger<DataPortabilityService>>()));
         services.AddSingleton<IRuntimeSettingsProvider>(sp => new JsonRuntimeSettingsProvider(
             sp.GetRequiredService<IJsonStore<RuntimeSettings>>(), defaultSettings, sp.GetRequiredService<ILogger<JsonRuntimeSettingsProvider>>()));
+        services.AddSingleton<IJobSearchPreferencesProvider>(sp => new JsonJobSearchPreferencesProvider(
+            sp.GetRequiredService<IJsonStore<JobSearchPreferences>>()));
+        services.AddSingleton<ICacheInvalidatable>(sp => (ICacheInvalidatable)sp.GetRequiredService<IJobSearchPreferencesProvider>());
         workerOptions ??= new WorkerOptions();
         // Redirects are followed by the fetcher itself so that every hop is checked against private/loopback targets,
         // and the connect callback re-checks the address actually dialled (DNS rebinding).
@@ -57,6 +61,10 @@ public static class DependencyInjection
                 AutomaticDecompression = System.Net.DecompressionMethods.All,
                 ConnectCallback = HttpJobPostingFetcher.ConnectToPublicAddressAsync
             });
+        services.AddHttpClient<GreenhouseJobDiscoverySource>(http => http.Timeout = TimeSpan.FromSeconds(20));
+        services.AddHttpClient<LeverJobDiscoverySource>(http => http.Timeout = TimeSpan.FromSeconds(20));
+        services.AddSingleton<IJobDiscoverySource>(sp => sp.GetRequiredService<GreenhouseJobDiscoverySource>());
+        services.AddSingleton<IJobDiscoverySource>(sp => sp.GetRequiredService<LeverJobDiscoverySource>());
         services.AddSingleton(workerOptions);
         services.AddSingleton<OpenXmlResumeDocumentService>();
         if (workerOptions.Enabled)
