@@ -25,12 +25,19 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
   imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressBarModule, MatTooltipModule, MatButtonToggleModule, MatExpansionModule, PageHeaderComponent, StatusChipComponent],
   template: `
     <div class="page">
-      <app-page-header eyebrow="Pipeline" title="Jobs" icon="work" subtitle="Paste a job description or import from a URL. Analysis is read-only; nothing is sent anywhere.">
-        <button mat-flat-button color="primary" (click)="formOpen.set(!formOpen())"><mat-icon class="material-symbols-rounded">{{ formOpen() ? 'close' : 'add' }}</mat-icon>{{ formOpen() ? 'Close' : 'Add a job' }}</button>
+      <app-page-header eyebrow="Pipeline" title="Jobs" icon="work" subtitle="Discover UK and Europe roles with explicit visa sponsorship from supported public career sites, then review or start the approval-gated apply workflow.">
+        <div class="row actions-header">
+          <button mat-stroked-button [disabled]="busy()" (click)="discover()"><mat-icon class="material-symbols-rounded">travel_explore</mat-icon>Discover sponsored jobs</button>
+          <button mat-flat-button color="primary" (click)="formOpen.set(!formOpen())"><mat-icon class="material-symbols-rounded">{{ formOpen() ? 'close' : 'add' }}</mat-icon>{{ formOpen() ? 'Close' : 'Add a job' }}</button>
+        </div>
       </app-page-header>
 
       @if (busy()) { <mat-progress-bar mode="indeterminate" /> }
       @if (error()) { <div class="alert error"><mat-icon class="material-symbols-rounded">error</mat-icon><span>{{ error() }}</span></div> }
+      @if (discoverySummary()) { <div class="alert info"><mat-icon class="material-symbols-rounded">info</mat-icon><span>{{ discoverySummary() }}</span></div> }
+      @if (discoveryNotes().length) {
+        <div class="alert warn"><mat-icon class="material-symbols-rounded">policy</mat-icon><div>@for (note of discoveryNotes(); track note) { <div>{{ note }}</div> }</div></div>
+      }
 
       @if (formOpen()) {
         <section class="card">
@@ -94,6 +101,7 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
               @if (j.match) { <span class="score big" [class.low]="j.match.score < 60">{{ j.match.score }}%</span> } @else { <span class="muted small">not analyzed</span> }
               <div class="row">
                 @if (j.status !== 'DISMISSED') {
+                  <button mat-flat-button color="primary" [disabled]="busy()" (click)="apply(j)">Apply</button>
                   <button mat-stroked-button [disabled]="busy()" (click)="analyze(j)">{{ j.analysis ? 'Re-analyze' : 'Analyze' }}</button>
                   <button mat-icon-button matTooltip="Dismiss" [disabled]="busy()" (click)="dismiss(j)"><mat-icon class="material-symbols-rounded">visibility_off</mat-icon></button>
                 }
@@ -101,13 +109,14 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
               </div>
             </div>
           </div>
-        } @empty {
-          <div class="empty"><mat-icon class="material-symbols-rounded">work_off</mat-icon>{{ jobs().length ? 'No jobs match this filter.' : 'No jobs yet — add your first one above.' }}</div>
+         } @empty {
+          <div class="empty"><mat-icon class="material-symbols-rounded">work_off</mat-icon>{{ jobs().length ? 'No jobs match this filter.' : 'No jobs yet — discover sponsored roles or add one manually.' }}</div>
         }
       </section>
     </div>
   `,
   styles: [`
+    .actions-header { gap: .5rem; flex-wrap: wrap; }
     .import { align-items: center; margin-bottom: 1rem; }
     .form { display: grid; gap: .5rem 1rem; grid-template-columns: 1fr 1fr; }
     .form .span { grid-column: 1 / -1; }
@@ -128,6 +137,8 @@ export class JobsComponent {
   readonly error = signal('');
   readonly busy = signal(false);
   readonly warnings = signal<string[]>([]);
+  readonly discoveryNotes = signal<string[]>([]);
+  readonly discoverySummary = signal('');
   readonly formOpen = signal(false);
   readonly query = signal('');
   readonly filter = signal<Filter>('ALL');
@@ -147,6 +158,15 @@ export class JobsComponent {
 
   reset(): void { this.form = { title: '', company: '', location: '', source: 'Manual', url: '', description: '' }; this.warnings.set([]); this.importUrl = ''; }
 
+  discover(): Promise<void> {
+    return this.run(async () => {
+      const result = await this.api.discoverJobs(20);
+      this.discoveryNotes.set(result.notes);
+      this.discoverySummary.set(`Discovered ${result.jobs.length} UK/EU visa-sponsorship role(s) from ${result.sources.join(', ')}. Imported ${result.imported}, updated ${result.updated}, skipped ${result.skipped}.`);
+      this.notify.success(result.imported > 0 ? `Imported ${result.imported} sponsored role(s).` : 'Discovery finished.');
+    });
+  }
+
   importFromUrl(): Promise<void> {
     return this.run(async () => {
       const draft = await this.api.previewJobImport(this.importUrl);
@@ -165,6 +185,13 @@ export class JobsComponent {
   }
 
   analyze(j: Job): Promise<void> { return this.run(async () => { await this.api.analyzeJob(j.id); this.notify.success(`Analyzed ${j.title}.`); }); }
+  apply(j: Job): Promise<void> {
+    return this.run(async () => {
+      if (!j.analysis) await this.api.analyzeJob(j.id);
+      const result = await this.api.prepareJob(j.id);
+      this.notify.info(result.resumeApproval ? 'Application package prepared. Approve the resume changes in Approvals before execution.' : 'Application package prepared.');
+    });
+  }
   async dismiss(j: Job): Promise<void> {
     if (!await this.notify.confirm({ title: 'Dismiss job?', message: `${j.title} at ${j.company} will be hidden from the active list.`, confirmLabel: 'Dismiss' })) return;
     await this.run(() => this.api.dismissJob(j.id).then(() => undefined));
