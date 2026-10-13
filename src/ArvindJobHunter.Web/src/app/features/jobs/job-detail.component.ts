@@ -90,7 +90,7 @@ import { NotifyService } from '../../shared/notify.service';
             <div class="stack">
               @for (r of resumes(); track r.id) {
                 <section class="card">
-                  <div class="card-title"><mat-icon class="material-symbols-rounded">description</mat-icon>Proposed resume changes<span class="grow"></span><app-status-chip [status]="r.status" /></div>
+                  <div class="card-title"><mat-icon class="material-symbols-rounded">description</mat-icon>Proposed resume changes<span class="grow"></span><button mat-stroked-button type="button" [disabled]="busy()" (click)="previewResume(r)"><mat-icon class="material-symbols-rounded">preview</mat-icon>Preview resume</button><app-status-chip [status]="r.status" /></div>
                   @if (r.approvalId) { <div class="alert info"><mat-icon class="material-symbols-rounded">fact_check</mat-icon><span>Approval pending — review and execute it under <a routerLink="/approvals">Approvals</a>. The .docx is written only after execution.</span></div> }
                   <mat-accordion class="mt">
                     @for (c of r.changes; track $index) {
@@ -190,10 +190,15 @@ export class JobDetailComponent {
       this.notify.info(result.resumeApproval ? 'Resume changes proposed. Approve them in Approvals before anything is written.' : 'Application prepared.');
     });
   }
+  previewResume(resume: ResumeVersion): Promise<void> {
+    return this.run(async () => {
+      this.notify.previewResume(await this.api.resumePreview(resume.id));
+    }, false);
+  }
   draftRecruiter(): Promise<void> { return this.run(async () => { await this.api.recruiterEmail(this.jobId, this.recipient); this.notify.success('Recruiter email drafted. Nothing has been sent.'); }); }
 
-  private async run(action: () => Promise<void>): Promise<void> {
+  private async run(action: () => Promise<void>, reload = true): Promise<void> {
     this.busy.set(true); this.error.set('');
-    try { await action(); await this.load(); } catch (e) { this.error.set(describeError(e)); } finally { this.busy.set(false); }
+    try { await action(); if (reload) await this.load(); } catch (e) { this.error.set(describeError(e)); } finally { this.busy.set(false); }
   }
 }

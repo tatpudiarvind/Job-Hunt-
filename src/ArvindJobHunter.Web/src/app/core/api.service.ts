@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
 import {
   AgentRun, ApprovalRequest, AuditEvent, CandidateFact, CandidateProfile, Dashboard, EmailDraft, ExecutionReceipt,
-  GoogleOAuthSettings, GoogleStatus, InterviewPrepPlan, Job, JobApplication, JobPipelineResult, JobPostingDraft, ResumeVersion, Settings
+  GoogleOAuthSettings, GoogleStatus, InterviewPrepPlan, Job, JobApplication, JobPipelineResult, JobPostingDraft, ResumePreview, ResumeVersion, Settings
 } from './models';
 
 @Injectable({ providedIn: 'root' })
@@ -54,6 +54,7 @@ export class ApiService {
   receipts() { return this.get<ExecutionReceipt[]>('/approvals/receipts'); }
 
   resumes() { return this.get<ResumeVersion[]>('/resumes'); }
+  resumePreview(id: string) { return this.get<ResumePreview>(`/resumes/${id}/preview`); }
   requestResumeApproval(id: string) { return this.post<ApprovalRequest>(`/resumes/${id}/request-approval`); }
 
   emails() { return this.get<EmailDraft[]>('/emails'); }

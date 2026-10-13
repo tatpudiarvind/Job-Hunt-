@@ -64,7 +64,12 @@ import { NotifyService } from '../../shared/notify.service';
                     </mat-form-field>
                     <button mat-flat-button color="primary" [disabled]="busy() || !nextStatus[app.id]" (click)="transition(app)">Update</button>
                   </div>
-                  <a mat-button [routerLink]="['/jobs', app.jobId]">Open job<mat-icon iconPositionEnd class="material-symbols-rounded">arrow_forward</mat-icon></a>
+                  <div class="row wrap">
+                    <a mat-button [routerLink]="['/jobs', app.jobId]">Open job<mat-icon iconPositionEnd class="material-symbols-rounded">arrow_forward</mat-icon></a>
+                    @if (app.resumeVersionId) {
+                      <button mat-stroked-button type="button" [disabled]="busy()" (click)="previewResume(app.resumeVersionId)"><mat-icon class="material-symbols-rounded">preview</mat-icon>Preview resume</button>
+                    }
+                  </div>
                 </div>
                 <div class="stack">
                   <h4>Follow-up reminder</h4>
@@ -158,14 +163,17 @@ export class ApplicationsComponent {
   clearFollowUp(app: JobApplication): Promise<void> {
     return this.run(async () => { await this.api.clearFollowUp(app.id); delete this.followUpAt[app.id]; delete this.followUpNote[app.id]; this.notify.info('Reminder cleared.'); });
   }
+  previewResume(resumeVersionId: string): Promise<void> {
+    return this.run(async () => { this.notify.previewResume(await this.api.resumePreview(resumeVersionId)); }, false);
+  }
 
   private toLocalInput(iso: string): string {
     const d = new Date(iso); const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
-  private async run(action: () => Promise<void>): Promise<void> {
+  private async run(action: () => Promise<void>, reload = true): Promise<void> {
     this.busy.set(true); this.error.set('');
-    try { await action(); await this.load(); } catch (e) { this.error.set(describeError(e)); } finally { this.busy.set(false); }
+    try { await action(); if (reload) await this.load(); } catch (e) { this.error.set(describeError(e)); } finally { this.busy.set(false); }
   }
 }

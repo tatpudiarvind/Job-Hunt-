@@ -47,6 +47,9 @@ export interface ResumeVersion {
   approvalId: string | null; createdAt: string;
 }
 
+export interface ResumePreviewParagraph { index: number; text: string; style: string | null; }
+export interface ResumePreview { id: string; jobId: string; status: string; paragraphs: ResumePreviewParagraph[]; generatedAt: string; }
+
 export interface EmailDraft {
   id: string; jobId: string | null; kind: string; to: string; subject: string; body: string; status: string;
   approvalId: string | null; externalId: string | null; createdAt: string; updatedAt: string;

@@ -53,6 +53,10 @@ public sealed record UpdateGoogleOAuthSettingsRequest(
     [property: Required] string ClientSecret,
     [property: Required] string RedirectUri);
 
+public sealed record ResumePreviewParagraph(int Index, string Text, string? Style);
+
+public sealed record ResumePreviewResponse(Guid Id, Guid JobId, string Status, IReadOnlyList<ResumePreviewParagraph> Paragraphs, DateTimeOffset GeneratedAt);
+
 /// <summary>An error or warning reported by the browser so it lands in the same Markdown log as server events.</summary>
 public sealed record ClientLogRequest(
     string? Level,

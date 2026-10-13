@@ -16,6 +16,18 @@ public static class ResumeAndEmailEndpoints
         group.MapGet("/{id:guid}", async Task<IResult> (Guid id, ResumeService service, CancellationToken ct) =>
             await service.GetAsync(id, ct) is { } version ? Results.Ok(version) : Results.NotFound());
 
+        group.MapGet("/{id:guid}/preview", async Task<IResult> (Guid id, ResumeService service, CancellationToken ct) =>
+        {
+            try
+            {
+                return await service.PreviewAsync(id, ct) is { } preview ? Results.Ok(preview) : Results.NotFound();
+            }
+            catch (FileNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+        });
+
         group.MapPost("/{id:guid}/request-approval", async Task<IResult> (Guid id, ClaimsPrincipal user, ResumeService service, CancellationToken ct) =>
             await service.RequestApprovalAsync(id, user.UserId(), ct) is { } approval ? Results.Ok(approval) : Results.NotFound());
 
