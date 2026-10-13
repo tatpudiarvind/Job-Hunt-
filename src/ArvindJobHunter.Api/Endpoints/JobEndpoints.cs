@@ -55,6 +55,7 @@ public static class JobEndpoints
                 return Results.Ok(new { result.Job, result.Run });
             }
             catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (AgentRunFailedException ex) { return AgentFailed(ex); }
         });
 
         group.MapPost("/{id:guid}/prepare", async Task<IResult> (Guid id, ClaimsPrincipal user, AgentOrchestrator orchestrator, CancellationToken ct) =>
@@ -65,6 +66,7 @@ public static class JobEndpoints
                 return Results.Ok(result);
             }
             catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (AgentRunFailedException ex) { return AgentFailed(ex); }
         });
 
         group.MapPost("/{id:guid}/recruiter-email", async Task<IResult> (Guid id, RecruiterEmailRequest request, ClaimsPrincipal user, AgentOrchestrator orchestrator, CancellationToken ct) =>
@@ -74,6 +76,7 @@ public static class JobEndpoints
                 return Results.Ok(await orchestrator.DraftRecruiterEmailAsync(id, request.Recipient ?? "", user.UserId(), ct));
             }
             catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (AgentRunFailedException ex) { return AgentFailed(ex); }
         });
 
         group.MapGet("/{id:guid}/interview-prep", async Task<IResult> (Guid id, JobService service, InterviewPrepService prep, CancellationToken ct) =>
@@ -87,6 +90,11 @@ public static class JobEndpoints
 
         return endpoints;
     }
+
+    /// <summary>The LLM or a tool failed (bad API key, timeout, unusable output). The failed run is recorded under Activity.</summary>
+    private static IResult AgentFailed(AgentRunFailedException ex) =>
+        Results.Problem(ex.Message, statusCode: StatusCodes.Status502BadGateway, title: "Agent run failed",
+            extensions: new Dictionary<string, object?> { ["runId"] = ex.RunId });
 
     public sealed record RecruiterEmailRequest(string? Recipient);
     public sealed record ImportJobUrlRequest(string Url);

@@ -47,11 +47,11 @@ public sealed class MatchJobTool : IAgentTool<MatchJobInput, JobMatch>
         var response = await context.Llm.CompleteAsync(new LlmRequest(Prompts.Guardrail, [new("user", prompt)], "JobMatch"), cancellationToken);
         var parsed = LlmJson.Parse<MatchDto>(response.Content);
         var matched = (parsed.MatchedSkills ?? []).Where(s => skills.Contains(s, StringComparer.OrdinalIgnoreCase)).ToList();
-        var match = new JobMatch(Math.Clamp(parsed.Score, 0, 100), matched, parsed.MissingSkills ?? [], parsed.Reason ?? "", DateTimeOffset.UtcNow);
+        var match = new JobMatch(Math.Clamp((int)Math.Round(parsed.Score), 0, 100), matched, parsed.MissingSkills ?? [], parsed.Reason ?? "", DateTimeOffset.UtcNow);
         return ToolResult<JobMatch>.Ok(match, $"Score {match.Score}; matched {match.MatchedSkills.Count}, missing {match.MissingSkills.Count}");
     }
 
-    private sealed record MatchDto(int Score, List<string>? MatchedSkills, List<string>? MissingSkills, string? Reason);
+    private sealed record MatchDto(double Score, List<string>? MatchedSkills, List<string>? MissingSkills, string? Reason);
 }
 
 public sealed record ReadResumeInput(string Path);
@@ -118,6 +118,11 @@ public sealed class GenerateCoverLetterTool : IAgentTool<GenerateEmailInput, Gen
                      "Return JSON: {\"subject\":\"\",\"body\":\"\"}";
         var response = await context.Llm.CompleteAsync(new LlmRequest(Prompts.Guardrail, [new("user", prompt)], schema, 0.5), cancellationToken);
         var parsed = LlmJson.Parse<GeneratedEmail>(response.Content);
+        if (string.IsNullOrWhiteSpace(parsed.Subject) || string.IsNullOrWhiteSpace(parsed.Body))
+        {
+            return ToolResult<GeneratedEmail>.Fail("The LLM response did not contain both a subject and a body.");
+        }
+
         return ToolResult<GeneratedEmail>.Ok(parsed, $"Drafted \"{parsed.Subject}\"");
     }
 }

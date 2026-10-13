@@ -41,15 +41,9 @@ public static class ReadModelEndpoints
         }).WithTags("Dashboard");
 
         api.MapGet("/settings", async (IRuntimeSettingsProvider settings, OpenAiOptions openAi, CancellationToken ct) =>
-        {
-            var current = await settings.GetAsync(ct);
-            var configured = !string.IsNullOrWhiteSpace(current.LlmApiKey) || !string.IsNullOrWhiteSpace(openAi.ApiKey);
-            return new SettingsResponse(current.Mode.ToString(), current.LlmProvider, current.LlmDisplayName, current.LlmBaseUrl, configured,
-                current.LlmModel, !string.IsNullOrWhiteSpace(openAi.ApiKey), current.MasterResumePath,
-                !string.IsNullOrWhiteSpace(current.MasterResumePath) && File.Exists(current.MasterResumePath), dataDirectory);
-        }).WithTags("Settings");
+            ToSettingsResponse(await settings.GetAsync(ct), openAi, dataDirectory)).WithTags("Settings");
 
-        api.MapPut("/settings", async Task<IResult> (UpdateSettingsRequest request, ClaimsPrincipal user, IRuntimeSettingsProvider settings, AuditService audit, CancellationToken ct) =>
+        api.MapPut("/settings", async Task<IResult> (UpdateSettingsRequest request, ClaimsPrincipal user, IRuntimeSettingsProvider settings, OpenAiOptions openAi, AuditService audit, CancellationToken ct) =>
         {
             var current = await settings.GetAsync(ct);
             var mode = current.Mode;
@@ -85,7 +79,7 @@ public static class ReadModelEndpoints
 
             if (errors.Count > 0) return Results.ValidationProblem(errors);
 
-            var updated = new RuntimeSettings
+            var updated = current with
             {
                 Mode = mode,
                 LlmProvider = provider,
@@ -93,13 +87,12 @@ public static class ReadModelEndpoints
                 LlmBaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? current.LlmBaseUrl : baseUrl,
                 LlmApiKey = apiKey,
                 LlmModel = string.IsNullOrWhiteSpace(model) ? current.LlmModel : model,
-                MasterResumePath = request.MasterResumePath ?? current.MasterResumePath,
-                QualificationThreshold = current.QualificationThreshold,
-                ApprovalTtlHours = current.ApprovalTtlHours
+                MasterResumePath = request.MasterResumePath ?? current.MasterResumePath
             };
             await settings.SaveAsync(updated, ct);
             await audit.RecordAsync(user.UserId(), "SETTINGS_UPDATED", "RuntimeSettings", "local", "SUCCESS", $"Mode={updated.Mode}; Llm={updated.LlmProvider}; DisplayName={updated.LlmDisplayName}; BaseUrl={updated.LlmBaseUrl}; Model={updated.LlmModel}", ct);
-            return Results.Ok(updated);
+            // Same shape as GET: the API key is write-only and never echoed back to the browser.
+            return Results.Ok(ToSettingsResponse(updated, openAi, dataDirectory));
         }).WithTags("Settings");
 
         api.MapGet("/settings/google-oauth", async (IGoogleOAuthSettingsProvider googleSettings, CancellationToken ct) =>
@@ -153,14 +146,8 @@ public static class ReadModelEndpoints
             }
 
             var current = await settings.GetAsync(ct);
-            var updated = new RuntimeSettings
-            {
-                Mode = current.Mode,
-                LlmProvider = current.LlmProvider,
-                MasterResumePath = targetPath,
-                QualificationThreshold = current.QualificationThreshold,
-                ApprovalTtlHours = current.ApprovalTtlHours
-            };
+            // Only the path changes; LLM provider, model and API key must survive a resume upload.
+            var updated = current with { MasterResumePath = targetPath };
             await settings.SaveAsync(updated, ct);
             await audit.RecordAsync(user.UserId(), "MASTER_RESUME_UPLOADED", "RuntimeSettings", "local", "SUCCESS", $"{file.FileName} ({file.Length} bytes) -> {targetPath}", ct);
             return Results.Ok(new { masterResumePath = targetPath, fileName = file.FileName, size = file.Length });
@@ -201,11 +188,22 @@ public static class ReadModelEndpoints
             try { return Results.Ok(new { url = (await service.CreateAuthorizationUriAsync(user.UserId(), ct)).ToString() }); }
             catch (InvalidOperationException ex) { return Results.Problem(ex.Message, statusCode: StatusCodes.Status412PreconditionFailed); }
         }).RequireAuthorization();
-        google.MapGet("/callback", async Task<IResult> (string code, string state, IGoogleOAuthService service, IConfiguration configuration, CancellationToken ct) =>
+        google.MapGet("/callback", async Task<IResult> (string? code, string? state, string? error, IGoogleOAuthService service, IConfiguration configuration, CancellationToken ct) =>
         {
+            var webBaseUrl = configuration["Web:BaseUrl"] ?? "http://localhost:4200";
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return Results.Redirect($"{webBaseUrl}/settings?google=failed");
+            }
+
+            if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state))
+            {
+                return Results.BadRequest("Missing Google authorization code or state.");
+            }
+
             var result = await service.CompleteAsync(code, state, ct);
             return result.Succeeded
-                ? Results.Redirect((configuration["Web:BaseUrl"] ?? "http://localhost:4200") + "/settings?google=connected")
+                ? Results.Redirect($"{webBaseUrl}/settings?google=connected")
                 : Results.BadRequest(result.Error ?? "Google authorization failed.");
         }).AllowAnonymous();
         google.MapPost("/revoke", async (IGoogleOAuthService service, CancellationToken ct) => { await service.RevokeAsync(ct); return Results.NoContent(); }).RequireAuthorization();
@@ -235,4 +233,10 @@ public static class ReadModelEndpoints
 
         return endpoints;
     }
+
+    private static SettingsResponse ToSettingsResponse(RuntimeSettings current, OpenAiOptions openAi, string dataDirectory) =>
+        new(current.Mode.ToString(), current.LlmProvider, current.LlmDisplayName, current.LlmBaseUrl,
+            !string.IsNullOrWhiteSpace(current.LlmApiKey) || !string.IsNullOrWhiteSpace(openAi.ApiKey),
+            current.LlmModel, !string.IsNullOrWhiteSpace(openAi.ApiKey), current.MasterResumePath,
+            !string.IsNullOrWhiteSpace(current.MasterResumePath) && File.Exists(current.MasterResumePath), dataDirectory);
 }

@@ -6,6 +6,7 @@
     <Project Path="src/ArvindJobHunter.Contracts/ArvindJobHunter.Contracts.csproj" />
     <Project Path="src/ArvindJobHunter.Domain/ArvindJobHunter.Domain.csproj" />
     <Project Path="src/ArvindJobHunter.Infrastructure/ArvindJobHunter.Infrastructure.csproj" />
+    <Project Path="src/ArvindJobHunter.Logging/ArvindJobHunter.Logging.csproj" />
     <Project Path="src/ArvindJobHunter.ResumeAutomation/ArvindJobHunter.ResumeAutomation.csproj" />
     <Project Path="src/ArvindJobHunter.Worker/ArvindJobHunter.Worker.csproj" />
   </Folder>
@@ -15,5 +16,6 @@
     <Project Path="tests/ArvindJobHunter.Application.Tests/ArvindJobHunter.Application.Tests.csproj" />
     <Project Path="tests/ArvindJobHunter.Domain.Tests/ArvindJobHunter.Domain.Tests.csproj" />
     <Project Path="tests/ArvindJobHunter.IntegrationTests/ArvindJobHunter.IntegrationTests.csproj" />
+    <Project Path="tests/ArvindJobHunter.Logging.Tests/ArvindJobHunter.Logging.Tests.csproj" />
   </Folder>
 </Solution>

@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -265,6 +266,8 @@ export class SettingsComponent {
   importFile: File | null = null;
   resumeFile: File | null = null;
   readonly dragging = signal(false);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   constructor() { void this.load(); this.handleOAuthRedirect(); }
 

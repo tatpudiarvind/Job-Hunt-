@@ -40,7 +40,13 @@ The worker is optional unless the development scenario requires worker-based cap
 
 ## 4. Frontend Development Workflow
 
-Run the frontend from the Angular project directory:
+## Logs
+
+The API writes a Markdown log per day to `<data directory>/logs/jobhunter-api-<yyyy-MM-dd>.md`; the worker writes `src/ArvindJobHunter.Worker/logs/jobhunter-worker-<yyyy-MM-dd>.md`. Open them with VS Code's Markdown preview. Each API response has an `X-Correlation-Id` header that you can search for in the log. Details and settings: [logging.md](logging.md).
+
+Note: `dotnet test ArvindJobHunter.slnx` builds only the test projects and what they reference — the Worker is not among them. Use `dotnet build ArvindJobHunter.slnx` to compile everything.
+
+## Frontend
 
 ```powershell
 cd src/ArvindJobHunter.Web

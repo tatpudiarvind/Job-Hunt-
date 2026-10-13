@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ArvindJobHunter.Application.Abstractions;
 using ArvindJobHunter.Domain;
 using ArvindJobHunter.Domain.Entities;
+using Microsoft.Extensions.Logging;
 
 namespace ArvindJobHunter.Agents.Tools;
 
@@ -41,25 +43,39 @@ public sealed class ToolRegistry(IEnumerable<IAgentTool> tools)
     }
 }
 
-/// <summary>Executes a tool, records the call on the run, and never throws for tool-level failures.</summary>
+/// <summary>Executes a tool, records the call on the run, and never throws for tool-level failures (including HTTP timeouts).</summary>
 public static class ToolInvoker
 {
     public static async Task<(ToolResult<TOutput> Result, AgentRun Run)> InvokeAsync<TInput, TOutput>(
-        IAgentTool<TInput, TOutput> tool, TInput input, ToolContext context, CancellationToken cancellationToken)
+        IAgentTool<TInput, TOutput> tool, TInput input, ToolContext context, CancellationToken cancellationToken, ILogger? logger = null)
     {
         var watch = Stopwatch.StartNew();
         ToolResult<TOutput> result;
+        Exception? failure = null;
         try
         {
             result = await tool.ExecuteAsync(input, context, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
+            failure = ex;
             result = ToolResult<TOutput>.Fail(ex.Message);
         }
 
         watch.Stop();
         var run = context.Run.WithToolCall(new AgentToolCall(tool.Name, Summarize(input), result.Summary, result.Succeeded, DateTimeOffset.UtcNow, watch.ElapsedMilliseconds));
+        if (logger is not null)
+        {
+            if (result.Succeeded)
+            {
+                logger.LogInformation("Tool {Tool} succeeded in {DurationMs} ms (run {RunId}): {Summary}", tool.Name, watch.ElapsedMilliseconds, context.Run.Id, result.Summary);
+            }
+            else
+            {
+                logger.LogWarning(failure, "Tool {Tool} failed in {DurationMs} ms (run {RunId}): {Error}", tool.Name, watch.ElapsedMilliseconds, context.Run.Id, result.Error);
+            }
+        }
+
         return (result, run);
     }
 
@@ -72,7 +88,8 @@ public static class ToolInvoker
 
 internal static class LlmJson
 {
-    private static readonly JsonSerializerOptions Options = new() { PropertyNameCaseInsensitive = true };
+    // Real models sometimes return numbers as strings ("85") or with decimals (85.0); accept both.
+    private static readonly JsonSerializerOptions Options = new() { PropertyNameCaseInsensitive = true, NumberHandling = JsonNumberHandling.AllowReadingFromString };
 
     public static T Parse<T>(string content)
     {

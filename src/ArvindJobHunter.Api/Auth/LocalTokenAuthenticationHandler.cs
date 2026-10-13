@@ -13,7 +13,7 @@ public sealed class LocalTokenAuthenticationHandler(
     ILocalAuthenticationService authentication)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
-    public const string Scheme = "LocalToken";
+    public const string SchemeName = "LocalToken";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -33,8 +33,8 @@ public sealed class LocalTokenAuthenticationHandler(
         [
             new Claim(ClaimTypes.NameIdentifier, session.UserId.ToString()),
             new Claim("token", session.Token)
-        ], Scheme);
-        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme)));
+        ], SchemeName);
+        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
     }
 }
 

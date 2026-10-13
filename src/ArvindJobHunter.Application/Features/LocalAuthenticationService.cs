@@ -2,12 +2,14 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using ArvindJobHunter.Application.Abstractions;
 using ArvindJobHunter.Domain;
+using Microsoft.Extensions.Logging;
 
 namespace ArvindJobHunter.Application.Features;
 
-public sealed class LocalAuthenticationService(IJsonStore<LocalAccountRecord> store) : ILocalAuthenticationService
+public sealed class LocalAuthenticationService(IJsonStore<LocalAccountRecord> store, ILogger<LocalAuthenticationService> logger) : ILocalAuthenticationService
 {
     private const int Iterations = 210_000;
+    private const int MinimumPasswordLength = 12;
     private static readonly TimeSpan SessionLifetime = TimeSpan.FromHours(8);
     private readonly ConcurrentDictionary<string, LocalSession> sessions = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim gate = new(1, 1);
@@ -21,14 +23,25 @@ public sealed class LocalAuthenticationService(IJsonStore<LocalAccountRecord> st
 
     public async Task<bool> SignupAsync(string username, string password, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(username) || password.Length < 12) return false;
+        if (string.IsNullOrWhiteSpace(username) || !IsAcceptablePassword(password))
+        {
+            logger.LogWarning("Sign-up rejected: a username and a password of at least {MinimumLength} characters are required", MinimumPasswordLength);
+            return false;
+        }
+
         await gate.WaitAsync(cancellationToken);
         try
         {
             account ??= await store.LoadAsync(cancellationToken);
-            if (account.Username.Length > 0) return false;
+            if (account.Username.Length > 0)
+            {
+                logger.LogWarning("Sign-up rejected: the local account already exists");
+                return false;
+            }
+
             account = CreateAccount(username, password);
             await store.SaveAsync(account, cancellationToken);
+            logger.LogInformation("Local account {Username} created", account.Username);
             return true;
         }
         finally { gate.Release(); }
@@ -36,15 +49,28 @@ public sealed class LocalAuthenticationService(IJsonStore<LocalAccountRecord> st
 
     public async Task<bool> ResetPasswordAsync(string username, string newPassword, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(username) || newPassword.Length < 12) return false;
+        if (string.IsNullOrWhiteSpace(username) || !IsAcceptablePassword(newPassword))
+        {
+            logger.LogWarning("Password reset rejected: a username and a new password of at least {MinimumLength} characters are required", MinimumPasswordLength);
+            return false;
+        }
+
         await gate.WaitAsync(cancellationToken);
         try
         {
             account ??= await store.LoadAsync(cancellationToken);
-            if (account.Username.Length == 0 || !string.Equals(account.Username, username.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+            if (account.Username.Length == 0 || !string.Equals(account.Username, username.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                // The typed name is not logged: people sometimes type a password into the username box.
+                logger.LogWarning("Password reset rejected: the username does not match the local account");
+                return false;
+            }
+
             account = CreateAccount(account.Username, newPassword);
+            var revoked = sessions.Count;
             sessions.Clear();
             await store.SaveAsync(account, cancellationToken);
+            logger.LogWarning("Password reset for {Username}; {RevokedSessions} active session(s) revoked", account.Username, revoked);
             return true;
         }
         finally { gate.Release(); }
@@ -53,16 +79,23 @@ public sealed class LocalAuthenticationService(IJsonStore<LocalAccountRecord> st
     public async Task<LocalSession?> LoginAsync(string username, string password, CancellationToken cancellationToken)
     {
         var configured = await AccountAsync(cancellationToken);
-        if (configured.Username.Length == 0
-            || !string.Equals(configured.Username, username.Trim(), StringComparison.OrdinalIgnoreCase)
-            || !CryptographicOperations.FixedTimeEquals(Convert.FromBase64String(configured.PasswordHash), Hash(password, Convert.FromBase64String(configured.Salt))))
+        var failure = configured.Username.Length == 0 ? "no local account exists yet"
+            : string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password) ? "username or password missing"
+            : !string.Equals(configured.Username, username.Trim(), StringComparison.OrdinalIgnoreCase) ? "unknown username"
+            : !CryptographicOperations.FixedTimeEquals(Convert.FromBase64String(configured.PasswordHash), Hash(password, Convert.FromBase64String(configured.Salt))) ? "wrong password"
+            : null;
+        if (failure is not null)
         {
+            // Only the account's own name is logged; an unmatched entry may be a password typed into the username box.
+            if (failure == "wrong password") logger.LogWarning("Login failed for {Username}: {Reason}", configured.Username, failure);
+            else logger.LogWarning("Login failed: {Reason}", failure);
             return null;
         }
 
         PruneExpired();
         var session = new LocalSession(LocalUser.Id, Convert.ToHexString(RandomNumberGenerator.GetBytes(32)), DateTimeOffset.UtcNow.Add(SessionLifetime));
         sessions[session.Token] = session;
+        logger.LogInformation("Login succeeded for {Username}; session valid until {ExpiresAt:u}", configured.Username, session.ExpiresAt);
         return session;
     }
 
@@ -74,12 +107,21 @@ public sealed class LocalAuthenticationService(IJsonStore<LocalAccountRecord> st
             return true;
         }
 
-        if (found is not null) sessions.TryRemove(token, out _);
+        if (found is not null && sessions.TryRemove(token, out _))
+        {
+            logger.LogInformation("Session expired at {ExpiresAt:u}; the user must sign in again", found.ExpiresAt);
+        }
+
         session = null!;
         return false;
     }
 
-    public void Logout(string token) => sessions.TryRemove(token, out _);
+    public void Logout(string token)
+    {
+        if (sessions.TryRemove(token, out _)) logger.LogInformation("Signed out; session ended");
+    }
+
+    private static bool IsAcceptablePassword(string? password) => password is { Length: >= MinimumPasswordLength };
 
     private void PruneExpired()
     {

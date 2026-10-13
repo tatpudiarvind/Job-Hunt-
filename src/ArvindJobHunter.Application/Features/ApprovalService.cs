@@ -1,10 +1,11 @@
 using ArvindJobHunter.Application.Abstractions;
 using ArvindJobHunter.Domain;
 using ArvindJobHunter.Domain.Entities;
+using Microsoft.Extensions.Logging;
 
 namespace ArvindJobHunter.Application.Features;
 
-public sealed class ApprovalService(IRepository<ApprovalRequest> repository, IRuntimeSettingsProvider settings, AuditService audit)
+public sealed class ApprovalService(IRepository<ApprovalRequest> repository, IRuntimeSettingsProvider settings, AuditService audit, ILogger<ApprovalService> logger)
 {
     public async Task<IReadOnlyList<ApprovalRequest>> ListAsync(CancellationToken cancellationToken)
     {
@@ -17,6 +18,7 @@ public sealed class ApprovalService(IRepository<ApprovalRequest> repository, IRu
             {
                 var expired = item with { Status = ApprovalStatus.EXPIRED };
                 await repository.UpsertAsync(expired, cancellationToken);
+                logger.LogInformation("Approval {ApprovalId} ({Action}) expired unanswered at {ExpiresAt:u}", item.Id, item.ActionType, item.ExpiresAt);
                 result.Add(expired);
             }
             else
@@ -36,6 +38,7 @@ public sealed class ApprovalService(IRepository<ApprovalRequest> repository, IRu
         foreach (var previous in (await repository.ListAsync(cancellationToken)).Where(a => a.TargetId == targetId && a.ActionType == action && a.Status is ApprovalStatus.PENDING or ApprovalStatus.APPROVED))
         {
             await repository.UpsertAsync(previous.Invalidate("Superseded by a new approval request."), cancellationToken);
+            logger.LogInformation("Approval {ApprovalId} ({Status}) superseded by a new {Action} request for {TargetType} {TargetId}", previous.Id, previous.Status, action, targetType, targetId);
         }
 
         var approval = ApprovalRequest.Create(action, targetType, targetId, payload, summary, current.Mode, userId, TimeSpan.FromHours(current.ApprovalTtlHours));

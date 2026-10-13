@@ -58,7 +58,7 @@ export interface AgentRun {
   startedAt: string; completedAt: string | null; error: string | null; llmProvider: string; toolCalls: AgentToolCall[];
 }
 
-export interface AuditEvent { id: string; action: string; targetType: string; targetId: string; outcome: string; details: string | null; at: string; }
+export interface AuditEvent { id: string; action: string; targetType: string; targetId: string; outcome: string; details: string | null; correlationId?: string | null; at: string; }
 
 export interface JobPipelineResult { run: AgentRun; job: Job; resume: ResumeVersion | null; coverLetter: EmailDraft | null; resumeApproval: ApprovalRequest | null; }
 

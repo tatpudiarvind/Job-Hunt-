@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using ArvindJobHunter.Application.Abstractions;
 using ArvindJobHunter.Domain;
 using ArvindJobHunter.Domain.Entities;
+using Microsoft.Extensions.Logging;
 
 namespace ArvindJobHunter.Application.Features;
 
@@ -18,8 +20,13 @@ public sealed class ExecuteApprovedActionCommand(
     IResumeDocumentService resumeDocuments,
     IGmailClient gmail,
     ApplicationService applications,
-    AuditService audit)
+    AuditService audit,
+    ILogger<ExecuteApprovedActionCommand> logger)
 {
+    // Executions never overlap. Otherwise two clicks (or two tabs) with different idempotency keys could both
+    // pass the guard before either one consumes the approval, and an email would be sent twice.
+    private static readonly SemaphoreSlim ExecutionGate = new(1, 1);
+
     public async Task<IReadOnlyList<ExecutionReceipt>> ListAsync(CancellationToken cancellationToken) =>
         (await receipts.ListAsync(cancellationToken)).OrderByDescending(r => r.ExecutedAt).ToList();
 
@@ -27,34 +34,61 @@ public sealed class ExecuteApprovedActionCommand(
     {
         if (string.IsNullOrWhiteSpace(idempotencyKey)) throw new ArgumentException("Idempotency key is required.", nameof(idempotencyKey));
 
-        var existing = (await receipts.ListAsync(cancellationToken)).FirstOrDefault(r => r.IdempotencyKey == idempotencyKey);
-        if (existing is not null) return existing;
-
-        var approval = await approvals.GetAsync(approvalId, cancellationToken)
-            ?? throw new KeyNotFoundException($"Approval {approvalId} was not found.");
-        var current = await settings.GetAsync(cancellationToken);
-
-        ExecutionReceipt receipt;
+        await ExecutionGate.WaitAsync(cancellationToken);
         try
         {
-            receipt = approval.ActionType switch
+            var existing = (await receipts.ListAsync(cancellationToken)).FirstOrDefault(r => r.IdempotencyKey == idempotencyKey);
+            if (existing is not null)
             {
-                ApprovalActionType.APPLY_RESUME_CHANGES => await ApplyResumeAsync(approval, idempotencyKey, current, userId, cancellationToken),
-                ApprovalActionType.CREATE_EMAIL_DRAFT => await EmailAsync(approval, idempotencyKey, current, send: false, userId, cancellationToken),
-                ApprovalActionType.SEND_EMAIL => await EmailAsync(approval, idempotencyKey, current, send: true, userId, cancellationToken),
-                _ => throw new ApprovalViolationException($"{approval.ActionType} has no executor in this build.")
-            };
-        }
-        catch (ApprovalViolationException ex)
-        {
-            await audit.RecordAsync(userId, "EXECUTION_BLOCKED", "ApprovalRequest", approvalId.ToString(), "BLOCKED", ex.Message, cancellationToken);
-            throw;
-        }
+                logger.LogInformation("Execution of approval {ApprovalId} replayed: idempotency key already used, returning receipt {ReceiptId} ({Result})",
+                    approvalId, existing.Id, existing.Result);
+                return existing;
+            }
 
-        await receipts.UpsertAsync(receipt, cancellationToken);
-        if (receipt.Result != ExecutionResult.FAILED) await approvals.ConsumeAsync(approval, cancellationToken);
-        await audit.RecordAsync(userId, "EXECUTION_" + receipt.Result, "ApprovalRequest", approvalId.ToString(), receipt.Result.ToString(), receipt.Message, cancellationToken);
-        return receipt;
+            var approval = await approvals.GetAsync(approvalId, cancellationToken)
+                ?? throw new KeyNotFoundException($"Approval {approvalId} was not found.");
+            var current = await settings.GetAsync(cancellationToken);
+            logger.LogInformation("Executing approval {ApprovalId}: {Action} on {TargetType} {TargetId} in {Mode} mode",
+                approval.Id, approval.ActionType, approval.TargetType, approval.TargetId, current.Mode);
+            var watch = Stopwatch.StartNew();
+
+            ExecutionReceipt receipt;
+            try
+            {
+                receipt = approval.ActionType switch
+                {
+                    ApprovalActionType.APPLY_RESUME_CHANGES => await ApplyResumeAsync(approval, idempotencyKey, current, userId, cancellationToken),
+                    ApprovalActionType.CREATE_EMAIL_DRAFT => await EmailAsync(approval, idempotencyKey, current, send: false, userId, cancellationToken),
+                    ApprovalActionType.SEND_EMAIL => await EmailAsync(approval, idempotencyKey, current, send: true, userId, cancellationToken),
+                    _ => throw new ApprovalViolationException($"{approval.ActionType} has no executor in this build.")
+                };
+            }
+            catch (ApprovalViolationException ex)
+            {
+                logger.LogWarning("Execution of approval {ApprovalId} blocked by the guard: {Reason}", approvalId, ex.Message);
+                await audit.RecordAsync(userId, "EXECUTION_BLOCKED", "ApprovalRequest", approvalId.ToString(), "BLOCKED", ex.Message, CancellationToken.None);
+                throw;
+            }
+            catch (Exception ex) when (ex is not KeyNotFoundException && (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested))
+            {
+                // Record a receipt instead of surfacing a bare 500: the approval stays usable and the failure is audited.
+                logger.LogError(ex, "Execution of approval {ApprovalId} ({Action}) failed", approvalId, approval.ActionType);
+                receipt = Receipt(approval, idempotencyKey, current.Mode, ExecutionResult.FAILED, null, $"Execution failed: {ex.Message}");
+            }
+
+            // The outcome must be recorded even if the browser went away meanwhile; otherwise a sent email would leave
+            // the approval reusable.
+            await receipts.UpsertAsync(receipt, CancellationToken.None);
+            if (receipt.Result != ExecutionResult.FAILED) await approvals.ConsumeAsync(approval, CancellationToken.None);
+            await audit.RecordAsync(userId, "EXECUTION_" + receipt.Result, "ApprovalRequest", approvalId.ToString(), receipt.Result.ToString(), receipt.Message, CancellationToken.None);
+            logger.Log(receipt.Result == ExecutionResult.SUCCESS ? LogLevel.Information : LogLevel.Warning,
+                "Approval {ApprovalId} finished with {Result} in {ElapsedMs} ms (receipt {ReceiptId})", approvalId, receipt.Result, watch.ElapsedMilliseconds, receipt.Id);
+            return receipt;
+        }
+        finally
+        {
+            ExecutionGate.Release();
+        }
     }
 
     private async Task<ExecutionReceipt> ApplyResumeAsync(ApprovalRequest approval, string key, RuntimeSettings current, Guid userId, CancellationToken cancellationToken)
@@ -63,10 +97,18 @@ public sealed class ExecuteApprovedActionCommand(
             ?? throw new KeyNotFoundException("Resume version not found.");
         guard.EnsureAllowed(approval, ApprovalActionType.APPLY_RESUME_CHANGES, ApprovalRequest.ComputeHash(version.PayloadForApproval()), current.Mode);
 
-        if (current.Mode == ExecutionMode.DEMO || string.IsNullOrWhiteSpace(version.MasterPath) || !File.Exists(version.MasterPath))
+        if (current.Mode != ExecutionMode.LIVE)
         {
             await resumes.UpsertAsync(version.MarkApproved(), cancellationToken);
-            return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, null, "Demo mode: resume changes approved and recorded; no document was written.");
+            return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, null, $"{current.Mode} mode: resume changes approved and recorded; no document was written.");
+        }
+
+        if (string.IsNullOrWhiteSpace(version.MasterPath) || !File.Exists(version.MasterPath))
+        {
+            logger.LogWarning("LIVE resume execution for approval {ApprovalId} skipped: master resume {MasterPath} not found",
+                approval.Id, string.IsNullOrWhiteSpace(version.MasterPath) ? "(not configured)" : version.MasterPath);
+            return Receipt(approval, key, current.Mode, ExecutionResult.FAILED, null,
+                "LIVE mode: the master resume this version was prepared from was not found, so no document was written. Configure the master resume in Settings, then prepare the application again.");
         }
 
         var outputDirectory = Path.Combine(Path.GetDirectoryName(version.MasterPath)!, "tailored");
@@ -96,24 +138,48 @@ public sealed class ExecuteApprovedActionCommand(
             return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, null, $"{current.Mode} mode: email approved and recorded; Gmail was not contacted.");
         }
 
-        var result = send
-            ? await gmail.SendAsync(draft.To, draft.Subject, draft.Body, cancellationToken)
-            : await gmail.CreateDraftAsync(draft.To, draft.Subject, draft.Body, cancellationToken);
+        // Point of no return: once the request goes to Gmail the outcome must be recorded, so the browser request's
+        // cancellation token is no longer used, and any exception is UNKNOWN (UNKNOWN consumes the approval, so a
+        // blind retry cannot send the email twice).
+        GmailResult result;
+        try
+        {
+            result = send
+                ? await gmail.SendAsync(draft.To, draft.Subject, draft.Body, CancellationToken.None)
+                : await gmail.CreateDraftAsync(draft.To, draft.Subject, draft.Body, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Gmail {Operation} for draft {DraftId} threw; the outcome is unknown", send ? "send" : "draft creation", draft.Id);
+            return Receipt(approval, key, current.Mode, ExecutionResult.UNKNOWN, null,
+                $"Gmail call failed ({ex.GetType().Name}: {ex.Message}). The {(send ? "email may or may not have been sent" : "draft may or may not have been created")}; check Gmail before requesting a new approval.");
+        }
 
         if (!result.Succeeded)
         {
-            await drafts.UpsertAsync(draft.MarkFailed(), cancellationToken);
+            // Gmail rejected the request, so nothing was sent and the approval stays usable for a retry.
+            await drafts.UpsertAsync(draft.MarkFailed(), CancellationToken.None);
             return Receipt(approval, key, current.Mode, ExecutionResult.FAILED, null, result.Error);
         }
 
-        await drafts.UpsertAsync(send ? draft.MarkSent(result.ExternalId!) : draft.MarkCreatedInGmail(result.ExternalId!), cancellationToken);
-        if (draft.JobId is { } jobId && send)
+        var message = send ? "Email sent via Gmail." : "Draft created in Gmail.";
+        try
         {
-            var application = await applications.GetByJobAsync(jobId, cancellationToken);
-            if (application is not null) await applications.TryAdvanceAsync(application, ApplicationStatus.RECRUITER_CONTACTED, "Email sent.", userId, cancellationToken);
+            await drafts.UpsertAsync(send ? draft.MarkSent(result.ExternalId!) : draft.MarkCreatedInGmail(result.ExternalId!), CancellationToken.None);
+            if (draft.JobId is { } jobId && send)
+            {
+                var application = await applications.GetByJobAsync(jobId, CancellationToken.None);
+                if (application is not null) await applications.TryAdvanceAsync(application, ApplicationStatus.RECRUITER_CONTACTED, "Email sent.", userId, CancellationToken.None);
+            }
+        }
+        catch (Exception ex)
+        {
+            // The message already left Gmail: a local bookkeeping failure must not turn this into a reusable approval.
+            logger.LogError(ex, "Gmail {Operation} for draft {DraftId} succeeded, but updating local records failed", send ? "send" : "draft creation", draft.Id);
+            message += $" Updating the local draft or application afterwards failed: {ex.Message}";
         }
 
-        return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, result.ExternalId, send ? "Email sent via Gmail." : "Draft created in Gmail.");
+        return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, result.ExternalId, message);
     }
 
     private static ExecutionReceipt Receipt(ApprovalRequest approval, string key, ExecutionMode mode, ExecutionResult result, string? externalRef, string? message) =>

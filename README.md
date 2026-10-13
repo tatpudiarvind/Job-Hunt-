@@ -3,7 +3,7 @@
 ![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)
 ![Angular 22](https://img.shields.io/badge/Angular-22-DD0031?logo=angular)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
-![Tests](https://img.shields.io/badge/tests-43%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-193%20passing-brightgreen)
 
 Single-user, local-first, **approval-first** AI job search and application assistant.
 
@@ -36,6 +36,7 @@ The agent analyzes jobs, matches them against your *verified* facts, proposes re
 - **DEMO / DRY_RUN / LIVE** execution modes, switchable at runtime.
 - **Versioned JSON persistence** with atomic writes, backups, quarantine and recovery.
 - **Full audit trail**, execution receipts, follow-up reminders, interview-prep links, backup & restore.
+- **Markdown activity log** — a daily, human-readable `.md` log of requests, agent runs, LLM/Gmail calls, approvals and errors, with correlation ids and secrets masked ([docs/logging.md](docs/logging.md)).
 
 ## Tech stack
 
@@ -46,6 +47,7 @@ The agent analyzes jobs, matches them against your *verified* facts, proposes re
 | Documents | Open XML SDK (`.docx`) |
 | Integrations | Google OAuth 2.0, Gmail API, OpenAI (optional) |
 | Storage | Versioned JSON files, ASP.NET DataProtection (DPAPI on Windows) |
+| Logging | `Microsoft.Extensions.Logging` + custom Markdown file provider (`ArvindJobHunter.Logging`) |
 | Tests | xUnit, `WebApplicationFactory` integration tests, Vitest |
 
 ## What is implemented
@@ -59,8 +61,9 @@ The agent analyzes jobs, matches them against your *verified* facts, proposes re
 | **ResumeAutomation** | Open XML service; master `.docx` opened read-only, every tailored resume is a copy |
 | **Worker** | Loopback-only document worker with shared secret and idempotent apply receipts |
 | **API** | Minimal APIs, bearer auth handler, rate-limited auth, string enums, dashboard/settings/audit/runs/Google integration endpoints |
-| **Web** | Angular 22 routed app: login, dashboard, jobs, job detail, approvals + receipts, applications, emails, profile/facts, activity, settings |
-| **Tests** | 43 tests: domain state machine & approvals, guard, demo LLM/tool registry, JSON store recovery, full API pipeline via `WebApplicationFactory` |
+| **Web** | Angular 22 routed app: login, dashboard, jobs, job detail, approvals + receipts, applications, emails, profile/facts, activity, settings; global error handler that reports browser errors to the API log |
+| **Logging** | Markdown file logger (daily files, size roll-over, retention, collapsible exceptions, secret masking), per-request log line + `X-Correlation-Id`, correlation ids on audit events, structured logs across services |
+| **Tests** | 169 .NET tests (domain, application incl. execution gateway, agents, integration, API pipeline, logger) and 24 Vitest tests |
 
 ## Prerequisites
 
@@ -91,6 +94,8 @@ powershell -File scripts/smoke-test.ps1
 
 First visit creates your local account (password ≥ 12 chars). A candidate profile and 14 verified skill facts are seeded on first start.
 
+Logs: the API writes a daily Markdown log to `src/ArvindJobHunter.Api/data/logs/jobhunter-api-<date>.md` (the path is printed at startup). See [docs/logging.md](docs/logging.md).
+
 ## Project structure
 
 ```
@@ -102,6 +107,7 @@ First visit creates your local account (password ≥ 12 chars). A candidate prof
 │   ├── ArvindJobHunter.Application/       # Use cases, approval service, guards
 │   ├── ArvindJobHunter.Agents/            # Tool registry, orchestrator, LLM providers
 │   ├── ArvindJobHunter.Infrastructure/    # JSON store, settings, Google/Gmail adapters
+│   ├── ArvindJobHunter.Logging/           # Markdown file logger, request logging, correlation ids
 │   ├── ArvindJobHunter.ResumeAutomation/  # Open XML resume service
 │   ├── ArvindJobHunter.Worker/            # Loopback-only document worker
 │   ├── ArvindJobHunter.Api/               # Minimal API host
@@ -124,11 +130,12 @@ Switch modes in **Settings**. An approval granted in one mode cannot be executed
 ## Configuration (`src/ArvindJobHunter.Api/appsettings.json`)
 
 - `Storage:DataDirectory` – JSON data root (default `data`, env `Storage__DataDirectory`).
-- `Runtime:Mode`, `Runtime:LlmProvider` (`Demo` | `OpenAI`), `Runtime:MasterResumePath`, `Runtime:QualificationThreshold`, `Runtime:ApprovalTtlHours`.
+- `Runtime:Mode`, `Runtime:LlmProvider` (`Demo` | `OpenAI`), `Runtime:MasterResumePath`, `Runtime:QualificationThreshold`, `Runtime:ApprovalTtlHours`. Mode, LLM and master-resume values are the starting point until you save the **Settings** page (from then on `data/settings.json` wins for those fields); the qualification threshold and approval TTL are not editable in the UI and always come from configuration.
 - `OpenAI:ApiKey`, `OpenAI:Model` – only used when `LlmProvider` is `OpenAI`.
-- `Google:ClientId`, `Google:ClientSecret`, `Google:RedirectUri` – Gmail integration.
+- `Google:ClientId`, `Google:ClientSecret`, `Google:RedirectUri` – Gmail integration. Saving them on the Settings page writes them into `appsettings.json` in plain text — do not commit that file with real values (prefer user secrets or environment variables).
 - `Web:BaseUrl` – CORS origin and OAuth return URL.
 - `Worker:BaseUrl`, `Worker:SharedSecret` – optional. When both are set the API proxies resume read/apply to the loopback Worker (`dotnet run --project src/ArvindJobHunter.Worker`, default `http://127.0.0.1:5310`) for process isolation; otherwise Open XML runs in-process. Writes never silently fall back.
+- `Logging:MarkdownFile:*` – Markdown log folder, size/retention limits and per-category levels (see [docs/logging.md](docs/logging.md)).
 
 DataProtection keys under `<DataDirectory>/keys` are DPAPI-protected on Windows (per-user). On other OSes they are file-persisted only.
 
@@ -152,6 +159,8 @@ Secrets belong in user-secrets or environment variables, not in the repo.
 - [docs/llm-provider.md](docs/llm-provider.md) – Demo/OpenAI providers
 - [docs/gmail-integration.md](docs/gmail-integration.md) – OAuth and Gmail boundary
 - [docs/json-storage.md](docs/json-storage.md) – persistence guarantees
+- [docs/logging.md](docs/logging.md) – Markdown log files, correlation ids, what is logged, configuration
+- [docs/code-review-findings.md](docs/code-review-findings.md) – code review: bugs fixed and recommended improvements
 - [docs/local-development.md](docs/local-development.md)
 - [docs/roadmap.md](docs/roadmap.md) – what is next
 
@@ -160,7 +169,7 @@ Secrets belong in user-secrets or environment variables, not in the repo.
 - **Import from URL** (Jobs page) - fetches a public posting once, extracts schema.org `JobPosting` JSON-LD or page text, and prefills the form for your review. Private/loopback hosts are blocked; nothing is saved until you click *Add job*.
 - **Follow-up reminders** (Applications page, Dashboard) - schedule a due date/note per application; due items surface on the dashboard. Reminders only - any email still goes through approval.
 - **Interview prep** (nav, or from a job) - curated outbound links grouped by company research, role/behavioral, each analyzed skill (gaps first), and practice/system design. Links point to YouTube search, Microsoft Learn, GeeksforGeeks, LeetCode, HackerRank, Glassdoor/Google searches and open in a new tab; nothing is embedded, fetched, or stored.
-- **Backup & restore** (Settings) - zip export of data files (secrets, keys and tokens excluded) and validated import with an automatic pre-import backup.
+- **Backup & restore** (Settings) - zip export of data files (secrets, keys, tokens and the LLM API key excluded) and validated import with an automatic pre-import backup; importing an export keeps the API key already configured on this machine.
 
 ## Not yet implemented
 Job-board discovery/scraping, browser automation, automatic application submission, agent-proposed follow-up emails, multi-user support, and a database backend. See the roadmap.

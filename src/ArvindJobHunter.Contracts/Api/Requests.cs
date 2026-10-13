@@ -53,6 +53,13 @@ public sealed record UpdateGoogleOAuthSettingsRequest(
     [property: Required] string ClientSecret,
     [property: Required] string RedirectUri);
 
+/// <summary>An error or warning reported by the browser so it lands in the same Markdown log as server events.</summary>
+public sealed record ClientLogRequest(
+    string? Level,
+    [property: Required, MaxLength(2000)] string Message,
+    [property: MaxLength(500)] string? Url,
+    [property: MaxLength(8000)] string? Stack);
+
 public sealed record DashboardResponse(
     int Jobs,
     int QualifiedJobs,

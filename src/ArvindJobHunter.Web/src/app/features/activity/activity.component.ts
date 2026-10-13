@@ -1,5 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { DatePipe, SlicePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -17,7 +17,7 @@ import { StatusChipComponent } from '../../shared/status-chip.component';
 @Component({
   selector: 'app-activity',
   standalone: true,
-  imports: [DatePipe, RouterLink, MatIconModule, MatButtonModule, MatProgressBarModule, MatTabsModule, MatExpansionModule, MatTableModule, MatTooltipModule, PageHeaderComponent, StatusChipComponent],
+  imports: [DatePipe, SlicePipe, RouterLink, MatIconModule, MatButtonModule, MatProgressBarModule, MatTabsModule, MatExpansionModule, MatTableModule, MatTooltipModule, PageHeaderComponent, StatusChipComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Transparency" title="Activity" icon="history" subtitle="Every agent run and every audited action, with tool calls and outcomes.">
@@ -75,6 +75,9 @@ import { StatusChipComponent } from '../../shared/status-chip.component';
                   <div class="row"><b>{{ e.action }}</b><app-status-chip [status]="e.outcome" /><span class="chip">{{ e.targetType }}</span></div>
                   @if (e.details) { <span class="small">{{ e.details }}</span> }
                   <span class="muted small mono" [matTooltip]="e.targetId">{{ e.targetId }}</span>
+                  @if (e.correlationId) {
+                    <span class="muted small mono" [matTooltip]="'Correlation id ' + e.correlationId + ' — search for it in the Markdown log (data/logs) to see everything that happened in this request.'">log #{{ e.correlationId | slice:0:12 }}</span>
+                  }
                 </div>
               </div>
             } @empty { <div class="empty"><mat-icon class="material-symbols-rounded">receipt_long</mat-icon>No audit events yet.</div> }
