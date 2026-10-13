@@ -1,9 +1,10 @@
 using ArvindJobHunter.Application.Abstractions;
 using ArvindJobHunter.Domain.Entities;
+using Microsoft.Extensions.Logging;
 
 namespace ArvindJobHunter.Application.Features;
 
-public sealed class CandidateProfileService(ICandidateProfileRepository repository)
+public sealed class CandidateProfileService(ICandidateProfileRepository repository, ILogger<CandidateProfileService> logger)
 {
     public static readonly Guid LocalCandidateId = Domain.LocalUser.CandidateId;
 
@@ -20,11 +21,16 @@ public sealed class CandidateProfileService(ICandidateProfileRepository reposito
         string? currentCompany,
         CancellationToken cancellationToken)
     {
-        var profile = await repository.GetAsync(id, cancellationToken)
-            ?? new CandidateProfile(id, name, currentRole, currentCompany);
+        var existing = await repository.GetAsync(id, cancellationToken);
+        var profile = existing ?? new CandidateProfile(id, name, currentRole, currentCompany);
 
         profile.Update(name, currentRole, currentCompany);
         await repository.SaveAsync(profile, cancellationToken);
+        logger.LogInformation("Candidate profile {CandidateId} {Operation}: role={CurrentRole}, company={CurrentCompany}",
+            id,
+            existing is null ? "created" : "updated",
+            currentRole,
+            string.IsNullOrWhiteSpace(currentCompany) ? "(none)" : currentCompany);
         return profile;
     }
 }

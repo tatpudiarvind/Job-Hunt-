@@ -29,7 +29,7 @@ public sealed class ExecuteApprovedActionCommandTests : IDisposable
         return new ExecuteApprovedActionCommand(
             new ApprovalService(approvals, settings, audit, NullLogger<ApprovalService>.Instance),
             new ExternalActionGuard(), settings, receipts, resumes, drafts, documents, gmail,
-            new ApplicationService(applications, audit), audit, NullLogger<ExecuteApprovedActionCommand>.Instance);
+            new ApplicationService(applications, audit, NullLogger<ApplicationService>.Instance), audit, NullLogger<ExecuteApprovedActionCommand>.Instance);
     }
 
     private async Task<ApprovalRequest> ApprovedAsync(ApprovalActionType action, Guid targetId, string payload, ExecutionMode mode)
@@ -264,6 +264,18 @@ public sealed class ExecuteApprovedActionCommandTests : IDisposable
             if (Delay > TimeSpan.Zero) await Task.Delay(Delay, cancellationToken);
             return new GmailResult(true, $"gmail-{sends}", null);
         }
+
+        public Task<IReadOnlyList<GmailLabel>> ListLabelsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<GmailLabel>>(Array.Empty<GmailLabel>());
+
+        public Task<GmailSearchResults> ListMessagesAsync(int? maxResults = null, string? pageToken = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new GmailSearchResults(Array.Empty<GmailMessageSummary>(), null, 0));
+
+        public Task<GmailSearchResults> SearchMessagesAsync(string query, int? maxResults = null, string? pageToken = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new GmailSearchResults(Array.Empty<GmailMessageSummary>(), null, 0));
+
+        public Task<GmailMessage?> GetMessageAsync(string messageId, CancellationToken cancellationToken) =>
+            Task.FromResult<GmailMessage?>(null);
     }
 }
 

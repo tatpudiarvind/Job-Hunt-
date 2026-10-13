@@ -158,7 +158,7 @@ import { NotifyService } from '../../shared/notify.service';
             <section class="card">
               <div class="card-title between">
                 <span class="row"><mat-icon class="material-symbols-rounded">mail</mat-icon>Google / Gmail</span>
-                <button mat-icon-button type="button" matTooltip="How to get Google OAuth details" (click)="googleHelp.set(!googleHelp())" aria-label="Google OAuth help">
+                <button mat-icon-button type="button" matTooltip="How Gmail integration works" (click)="googleHelp.set(!googleHelp())" aria-label="Gmail integration help">
                   <mat-icon class="material-symbols-rounded">help</mat-icon>
                 </button>
               </div>
@@ -166,43 +166,42 @@ import { NotifyService } from '../../shared/notify.service';
                 <div class="alert info help-card">
                   <mat-icon class="material-symbols-rounded">help</mat-icon>
                   <span>
-                    1. Go to Google Cloud Console. 2. Create or select a project. 3. Enable the Gmail API. 4. Create OAuth 2.0 Client ID credentials. 5. Add <span class="mono">http://localhost:5228/api/integrations/google/callback</span> as an authorized redirect URI. 6. Copy the Client ID and Client Secret here, then save and click Connect Google.
+                    First save the Google OAuth Client ID, Client Secret, and Redirect URI. The application writes them to the API <span class="mono">appsettings.json</span> file. After that, click <b>Connect Google</b> to authorize Gmail access through Google.
                   </span>
                 </div>
               }
+              <form class="stack mt" (ngSubmit)="saveGoogleOAuth()">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Google Client ID</mat-label>
+                  <input matInput name="googleClientId" [(ngModel)]="googleForm.clientId" placeholder="YOUR_GOOGLE_OAUTH_CLIENT_ID" required />
+                </mat-form-field>
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Google Client Secret</mat-label>
+                  <input matInput name="googleClientSecret" [type]="showGoogleSecret() ? 'text' : 'password'" [(ngModel)]="googleForm.clientSecret" placeholder="YOUR_GOOGLE_OAUTH_CLIENT_SECRET" required />
+                  <button mat-icon-button matSuffix type="button" (click)="showGoogleSecret.set(!showGoogleSecret())" [attr.aria-label]="showGoogleSecret() ? 'Hide client secret' : 'Show client secret'">
+                    <mat-icon class="material-symbols-rounded">{{ showGoogleSecret() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                  </button>
+                </mat-form-field>
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Redirect URI</mat-label>
+                  <input matInput name="googleRedirectUri" [(ngModel)]="googleForm.redirectUri" placeholder="http://localhost:5228/api/integrations/google/callback" required />
+                </mat-form-field>
+                <div class="row between">
+                  <span class="muted small">Saved values are written to the API appsettings.json file.</span>
+                  <button mat-flat-button color="primary" type="submit" [disabled]="busy()">Save Google settings</button>
+                </div>
+              </form>
               @if (google(); as g) {
                 @if (!g.configured) {
-                  <div class="alert warn"><mat-icon class="material-symbols-rounded">info</mat-icon><span>Gmail actions are unavailable because Google OAuth is not configured yet. Fill in the fields below and save.</span></div>
+                  <div class="alert warn mt"><mat-icon class="material-symbols-rounded">info</mat-icon><span>Gmail actions are unavailable until valid Google OAuth settings are saved.</span></div>
                 }
-                <form class="stack mt" (ngSubmit)="saveGoogleOAuth()">
-                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                    <mat-label>Google Client ID</mat-label>
-                    <input matInput name="googleClientId" [(ngModel)]="googleForm.clientId" placeholder="YOUR_GOOGLE_OAUTH_CLIENT_ID" required />
-                  </mat-form-field>
-                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                    <mat-label>Google Client Secret</mat-label>
-                    <input matInput name="googleClientSecret" [type]="showGoogleSecret() ? 'text' : 'password'" [(ngModel)]="googleForm.clientSecret" placeholder="YOUR_GOOGLE_OAUTH_CLIENT_SECRET" required />
-                    <button mat-icon-button matSuffix type="button" (click)="showGoogleSecret.set(!showGoogleSecret())" [attr.aria-label]="showGoogleSecret() ? 'Hide client secret' : 'Show client secret'">
-                      <mat-icon class="material-symbols-rounded">{{ showGoogleSecret() ? 'visibility_off' : 'visibility' }}</mat-icon>
-                    </button>
-                  </mat-form-field>
-                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                    <mat-label>Redirect URI</mat-label>
-                    <input matInput name="googleRedirectUri" [(ngModel)]="googleForm.redirectUri" placeholder="http://localhost:5228/api/integrations/google/callback" required />
-                  </mat-form-field>
-                  <div class="row between">
-                    <span class="muted small">Saved values are written to the API appsettings.json file.</span>
-                    <button mat-flat-button color="primary" type="submit" [disabled]="busy()">Save Google settings</button>
-                  </div>
-                </form>
-
                 @if (g.connected) {
                   <div class="row between mt">
-                    <div class="row"><mat-icon class="material-symbols-rounded ok">check_circle</mat-icon><span>Connected{{ g.accountEmail ? ' as ' + g.accountEmail : '' }}</span></div>
-                    <button mat-stroked-button [disabled]="busy()" (click)="revoke()">Disconnect</button>
+                    <div class="row"><mat-icon class="material-symbols-rounded ok">check_circle</mat-icon><span>Connected as <b>{{ g.accountEmail || 'Google Account' }}</b></span></div>
+                    <button mat-stroked-button [disabled]="busy()" (click)="revoke()">Disconnect Google</button>
                   </div>
                 } @else {
-                  <p class="muted small mt">Not connected. Connecting grants draft/send access, used only after you approve each individual email.</p>
+                  <p class="muted small mt">After saving the OAuth settings, click below to connect your Google account and enable Gmail features.</p>
                   <div class="row end mt"><button mat-flat-button color="primary" [disabled]="busy() || !googleConfigured()" (click)="connect()"><mat-icon class="material-symbols-rounded">link</mat-icon>Connect Google</button></div>
                 }
               }
@@ -256,7 +255,6 @@ export class SettingsComponent {
   private readonly notify = inject(NotifyService);
   readonly settings = signal<Settings | null>(null);
   readonly google = signal<GoogleStatus | null>(null);
-  readonly googleOAuth = signal<GoogleOAuthSettings | null>(null);
   readonly llmHelp = signal(false);
   readonly googleHelp = signal(false);
   readonly showLlmApiKey = signal(false);
@@ -264,20 +262,24 @@ export class SettingsComponent {
   readonly error = signal('');
   readonly busy = signal(false);
   form = { mode: 'DEMO', llmProvider: 'Demo', llmDisplayName: 'Demo', llmBaseUrl: 'https://api.openai.com/v1/', llmApiKey: '', llmModel: 'gpt-4o-mini', masterResumePath: '' };
-  googleForm = { clientId: '', clientSecret: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback' };
+  googleForm: GoogleOAuthSettings = { clientId: '', clientSecret: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback', configured: false };
   importFile: File | null = null;
   resumeFile: File | null = null;
   readonly dragging = signal(false);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
-  constructor() {
-    void this.load();
-    // The API's Google OAuth callback redirects back here with ?google=connected|failed.
-    const google = this.route.snapshot.queryParamMap.get('google');
-    if (google === 'connected') this.notify.success('Gmail connected.');
-    else if (google === 'failed') this.notify.error('Google authorization did not complete. The API log (data/logs) has the details.');
-    if (google) void this.router.navigate([], { relativeTo: this.route, queryParams: { google: null }, queryParamsHandling: 'merge', replaceUrl: true });
+  constructor() { void this.load(); this.handleOAuthRedirect(); }
+
+  private handleOAuthRedirect(): void {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google') === 'connected') {
+      this.notify.success('Google account connected successfully!');
+      // Remove the query parameter from URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      // Reload data to show updated status
+      void this.load();
+    }
   }
 
   async load(): Promise<void> {
@@ -287,9 +289,9 @@ export class SettingsComponent {
         this.api.googleStatus().catch(() => ({ configured: false, connected: false }) as GoogleStatus),
         this.api.googleOAuthSettings().catch(() => ({ clientId: '', clientSecret: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback', configured: false }) as GoogleOAuthSettings)
       ]);
-      this.settings.set(s); this.settingsState.update(s); this.google.set(g); this.googleOAuth.set(go);
+      this.settings.set(s); this.settingsState.update(s); this.google.set(g);
+      this.googleForm = { clientId: go.clientId, clientSecret: go.clientSecret, redirectUri: go.redirectUri, configured: go.configured };
       this.form = { mode: s.mode, llmProvider: s.llmProvider, llmDisplayName: s.llmDisplayName, llmBaseUrl: s.llmBaseUrl, llmApiKey: '', llmModel: s.llmModel, masterResumePath: s.masterResumePath };
-      this.googleForm = { clientId: go.clientId, clientSecret: go.clientSecret, redirectUri: go.redirectUri };
     } catch (e) { this.error.set(describeError(e)); }
   }
 

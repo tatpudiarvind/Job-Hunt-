@@ -188,19 +188,48 @@ public static class ReadModelEndpoints
             try { return Results.Ok(new { url = (await service.CreateAuthorizationUriAsync(user.UserId(), ct)).ToString() }); }
             catch (InvalidOperationException ex) { return Results.Problem(ex.Message, statusCode: StatusCodes.Status412PreconditionFailed); }
         }).RequireAuthorization();
-        google.MapGet("/callback", async Task<IResult> (string? code, string? state, string? error, IGoogleOAuthService service, IConfiguration configuration, ILoggerFactory loggers, CancellationToken ct) =>
+        google.MapGet("/callback", async Task<IResult> (string? code, string? state, string? error, IGoogleOAuthService service, IConfiguration configuration, CancellationToken ct) =>
         {
-            var settingsPage = (configuration["Web:BaseUrl"] ?? "http://localhost:4200") + "/settings?google=";
-            if (!string.IsNullOrEmpty(error) || string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
+            var webBaseUrl = configuration["Web:BaseUrl"] ?? "http://localhost:4200";
+            if (!string.IsNullOrWhiteSpace(error))
             {
-                // e.g. error=access_denied when the user cancels the consent screen; return to the app instead of a bare 400.
-                loggers.CreateLogger("ArvindJobHunter.Api.GoogleOAuth").LogWarning("Google authorization was not completed: {Error}", string.IsNullOrEmpty(error) ? "code or state missing" : error);
-                return Results.Redirect(settingsPage + "failed");
+                return Results.Redirect($"{webBaseUrl}/settings?google=failed");
             }
 
-            return Results.Redirect(settingsPage + (await service.CompleteAsync(code, state, ct) ? "connected" : "failed"));
+            if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state))
+            {
+                return Results.BadRequest("Missing Google authorization code or state.");
+            }
+
+            var result = await service.CompleteAsync(code, state, ct);
+            return result.Succeeded
+                ? Results.Redirect($"{webBaseUrl}/settings?google=connected")
+                : Results.BadRequest(result.Error ?? "Google authorization failed.");
         }).AllowAnonymous();
         google.MapPost("/revoke", async (IGoogleOAuthService service, CancellationToken ct) => { await service.RevokeAsync(ct); return Results.NoContent(); }).RequireAuthorization();
+
+        var gmail = endpoints.MapGroup("/api/integrations/gmail").WithTags("Gmail").RequireAuthorization();
+        gmail.MapGet("/labels", async (IGmailClient client, CancellationToken ct) =>
+        {
+            var labels = await client.ListLabelsAsync(ct);
+            return Results.Ok(new { labels = labels });
+        });
+        gmail.MapGet("/messages", async (int? maxResults, string? pageToken, IGmailClient client, CancellationToken ct) =>
+        {
+            var results = await client.ListMessagesAsync(maxResults, pageToken, ct);
+            return Results.Ok(new { messages = results.Messages, nextPageToken = results.NextPageToken, totalResults = results.TotalResults });
+        });
+        gmail.MapGet("/messages/search", async (string q, int? maxResults, string? pageToken, IGmailClient client, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(q)) return Results.BadRequest(new { error = "Search query is required" });
+            var results = await client.SearchMessagesAsync(q, maxResults, pageToken, ct);
+            return Results.Ok(new { messages = results.Messages, nextPageToken = results.NextPageToken, totalResults = results.TotalResults });
+        });
+        gmail.MapGet("/messages/{messageId}", async (string messageId, IGmailClient client, CancellationToken ct) =>
+        {
+            var message = await client.GetMessageAsync(messageId, ct);
+            return message is not null ? Results.Ok(message) : Results.NotFound();
+        });
 
         return endpoints;
     }

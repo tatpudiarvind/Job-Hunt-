@@ -1,6 +1,7 @@
 using ArvindJobHunter.Application.Abstractions;
 using ArvindJobHunter.Application.Features;
 using ArvindJobHunter.Domain.Entities;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ArvindJobHunter.Application.Tests;
 
@@ -10,7 +11,7 @@ public sealed class CandidateProfileServiceTests
     public async Task UpdateAsync_CreatesProfileWhenItDoesNotExist()
     {
         var repository = new InMemoryCandidateProfileRepository();
-        var service = new CandidateProfileService(repository);
+        var service = new CandidateProfileService(repository, NullLogger<CandidateProfileService>.Instance);
         var id = Guid.NewGuid();
 
         var profile = await service.UpdateAsync(
@@ -30,7 +31,7 @@ public sealed class CandidateProfileServiceTests
     public async Task UpdateAsync_UpdatesExistingProfileWithoutChangingIdentity()
     {
         var repository = new InMemoryCandidateProfileRepository();
-        var service = new CandidateProfileService(repository);
+        var service = new CandidateProfileService(repository, NullLogger<CandidateProfileService>.Instance);
         var id = Guid.NewGuid();
 
         await service.UpdateAsync(id, "Arvind Tatpudi", "Senior Software Engineer", "Siemens Healthineers", CancellationToken.None);

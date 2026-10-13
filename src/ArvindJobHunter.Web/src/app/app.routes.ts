@@ -19,6 +19,7 @@ export const routes: Routes = [
       { path: 'approvals', loadComponent: () => import('./features/approvals/approvals.component').then(m => m.ApprovalsComponent) },
       { path: 'applications', loadComponent: () => import('./features/applications/applications.component').then(m => m.ApplicationsComponent) },
       { path: 'emails', loadComponent: () => import('./features/emails/emails.component').then(m => m.EmailsComponent) },
+      { path: 'help', loadComponent: () => import('./features/help/help.component').then(m => m.HelpComponent) },
       { path: 'profile', loadComponent: () => import('./features/profile/profile.component').then(m => m.ProfileComponent) },
       { path: 'activity', loadComponent: () => import('./features/activity/activity.component').then(m => m.ActivityComponent) },
       { path: 'settings', loadComponent: () => import('./features/settings/settings.component').then(m => m.SettingsComponent) }

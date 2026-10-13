@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using ArvindJobHunter.Application.Abstractions;
 using Microsoft.AspNetCore.DataProtection;
@@ -14,7 +15,7 @@ public sealed class GoogleOAuthOptions
     public string ClientId { get; init; } = "";
     public string ClientSecret { get; init; } = "";
     public string RedirectUri { get; init; } = "http://localhost:5228/api/integrations/google/callback";
-    public string Scopes { get; init; } = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/userinfo.email";
+    public string Scopes { get; init; } = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email";
 }
 
 public sealed class GoogleTokenDocument
@@ -35,11 +36,12 @@ public sealed class GoogleOAuthService(
     IGoogleOAuthSettingsProvider settingsProvider,
     ILogger<GoogleOAuthService> logger) : IGoogleOAuthService
 {
-    public const string HttpClientName = "GoogleOAuth";
-    private const string Scopes = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/userinfo.email";
+    private const string Scopes = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email";
     private static readonly TimeSpan StateLifetime = TimeSpan.FromMinutes(10);
     private readonly ConcurrentDictionary<string, (Guid UserId, DateTimeOffset IssuedAt)> states = new();
     private volatile CachedAccessToken? cachedAccessToken;
+
+    private const string HttpClientName = "GoogleOAuth";
 
     private HttpClient Http => httpClientFactory.CreateClient(HttpClientName);
 
@@ -77,41 +79,38 @@ public sealed class GoogleOAuthService(
         return new Uri("https://accounts.google.com/o/oauth2/v2/auth?" + query);
     }
 
-    public async Task<bool> CompleteAsync(string code, string state, CancellationToken cancellationToken)
+    public async Task<GoogleOAuthCompletionResult> CompleteAsync(string code, string state, CancellationToken cancellationToken)
     {
         var options = await settingsProvider.GetAsync(cancellationToken);
-        if (!states.TryRemove(state, out var issued))
+        if (!states.TryRemove(state, out var issued) || issued.IssuedAt.Add(StateLifetime) < DateTimeOffset.UtcNow)
         {
-            logger.LogWarning("Google OAuth callback rejected: unknown state (the API restarted, or the link was already used). Start the connection again from Settings");
-            return false;
+            return new GoogleOAuthCompletionResult(false, "The Google sign-in session expired or is invalid. Please try connecting again.");
         }
 
-        if (issued.IssuedAt.Add(StateLifetime) < DateTimeOffset.UtcNow)
-        {
-            logger.LogWarning("Google OAuth callback rejected: the authorization request is older than {Minutes} minutes", StateLifetime.TotalMinutes);
-            return false;
-        }
-
-        var token = await ExchangeAsync(new Dictionary<string, string>
+        var exchange = await ExchangeAsync(new Dictionary<string, string>
         {
             ["code"] = code,
             ["client_id"] = options.ClientId,
             ["client_secret"] = options.ClientSecret,
             ["redirect_uri"] = options.RedirectUri,
             ["grant_type"] = "authorization_code"
-        }, "authorization-code exchange", cancellationToken);
-        if (token is null) return false;
-        if (token.RefreshToken is null)
+        }, cancellationToken);
+        if (exchange.Token is null)
         {
-            logger.LogWarning("Google returned no refresh token. Remove the app at https://myaccount.google.com/permissions and connect again");
-            return false;
+            return new GoogleOAuthCompletionResult(false, exchange.Error ?? "Google rejected the authorization code exchange.");
         }
 
-        var email = await FetchEmailAsync(token.AccessToken, cancellationToken);
-        cachedAccessToken = new CachedAccessToken(token.AccessToken, DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn - 60));
-        await store.SaveAsync(new GoogleTokenDocument { ProtectedRefreshToken = protector.Protect(token.RefreshToken), AccountEmail = email, ConnectedAt = DateTimeOffset.UtcNow }, cancellationToken);
-        logger.LogInformation("Google account {AccountEmail} connected for Gmail", email ?? "(email not shared)");
-        return true;
+        if (string.IsNullOrWhiteSpace(exchange.Token.RefreshToken))
+        {
+            return new GoogleOAuthCompletionResult(false, "Google did not return a refresh token. Revoke the app in your Google account permissions, then connect again.");
+        }
+
+        var email = await FetchEmailAsync(exchange.Token.AccessToken, cancellationToken);
+        cachedAccessToken = new CachedAccessToken(
+            exchange.Token.AccessToken,
+            DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, exchange.Token.ExpiresIn - 60)));
+        await store.SaveAsync(new GoogleTokenDocument { ProtectedRefreshToken = protector.Protect(exchange.Token.RefreshToken), AccountEmail = email, ConnectedAt = DateTimeOffset.UtcNow }, cancellationToken);
+        return new GoogleOAuthCompletionResult(true, null);
     }
 
     public async Task RevokeAsync(CancellationToken cancellationToken)
@@ -144,56 +143,35 @@ public sealed class GoogleOAuthService(
         if (cachedAccessToken is { } cached && cached.ExpiresAt > DateTimeOffset.UtcNow) return cached.Value;
         var document = await store.LoadAsync(cancellationToken);
         var options = await settingsProvider.GetAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(document.ProtectedRefreshToken))
-        {
-            logger.LogWarning("A Gmail access token was requested, but no Google account is connected");
-            return null;
-        }
-
-        if (!IsConfigured(options))
-        {
-            logger.LogWarning("A Google account is connected, but the Google OAuth client ID/secret are missing");
-            return null;
-        }
-
-        string refresh;
-        try
-        {
-            refresh = protector.Unprotect(document.ProtectedRefreshToken);
-        }
-        catch (CryptographicException ex)
-        {
-            logger.LogError(ex, "The stored Google refresh token cannot be decrypted (were the DataProtection keys replaced?). Reconnect Gmail in Settings");
-            return null;
-        }
-
-        var token = await ExchangeAsync(new Dictionary<string, string>
+        if (string.IsNullOrWhiteSpace(document.ProtectedRefreshToken) || !IsConfigured(options)) return null;
+        var refresh = protector.Unprotect(document.ProtectedRefreshToken);
+        var exchange = await ExchangeAsync(new Dictionary<string, string>
         {
             ["refresh_token"] = refresh,
             ["client_id"] = options.ClientId,
             ["client_secret"] = options.ClientSecret,
             ["grant_type"] = "refresh_token"
-        }, "access-token refresh", cancellationToken);
-        if (token is null) return null;
-        cachedAccessToken = new CachedAccessToken(token.AccessToken, DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn - 60));
-        logger.LogDebug("Google access token refreshed; valid for {Minutes} minutes", token.ExpiresIn / 60);
-        return token.AccessToken;
+        }, cancellationToken);
+        if (exchange.Token is null) return null;
+
+        cachedAccessToken = new CachedAccessToken(
+            exchange.Token.AccessToken,
+            DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, exchange.Token.ExpiresIn - 60)));
+        return cachedAccessToken.Value;
     }
 
     private static bool IsConfigured(GoogleOAuthConfiguration options) => !string.IsNullOrWhiteSpace(options.ClientId) && !string.IsNullOrWhiteSpace(options.ClientSecret);
 
-    private async Task<TokenResponse?> ExchangeAsync(Dictionary<string, string> form, string purpose, CancellationToken cancellationToken)
+    private async Task<TokenExchangeResult> ExchangeAsync(Dictionary<string, string> form, CancellationToken cancellationToken)
     {
         using var response = await Http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(form), cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        if (response.IsSuccessStatusCode)
         {
-            // Google explains failures such as invalid_grant or redirect_uri_mismatch in the body; it never contains tokens.
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            logger.LogError("Google token {Purpose} failed with {StatusCode}: {Body}", purpose, (int)response.StatusCode, body.Length > 500 ? body[..500] + "…" : body);
-            return null;
+            return new TokenExchangeResult(await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: cancellationToken), null);
         }
 
-        return await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: cancellationToken);
+        var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+        return new TokenExchangeResult(null, TryGetErrorMessage(payload) ?? $"Google token endpoint returned {(int)response.StatusCode} {response.ReasonPhrase}.");
     }
 
     private async Task<string?> FetchEmailAsync(string accessToken, CancellationToken cancellationToken)
@@ -218,6 +196,23 @@ public sealed class GoogleOAuthService(
         }
     }
 
+    private static string? TryGetErrorMessage(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return null;
+        try
+        {
+            var error = JsonSerializer.Deserialize<TokenErrorResponse>(payload);
+            if (error is null) return null;
+            return string.IsNullOrWhiteSpace(error.ErrorDescription)
+                ? error.Error
+                : $"{error.Error}: {error.ErrorDescription}";
+        }
+        catch (JsonException)
+        {
+            return payload;
+        }
+    }
+
     private void PruneStates()
     {
         var cutoff = DateTimeOffset.UtcNow.Subtract(StateLifetime);
@@ -230,6 +225,12 @@ public sealed class GoogleOAuthService(
         [property: JsonPropertyName("access_token")] string AccessToken,
         [property: JsonPropertyName("refresh_token")] string? RefreshToken,
         [property: JsonPropertyName("expires_in")] int ExpiresIn);
+
+    private sealed record TokenExchangeResult(TokenResponse? Token, string? Error);
+
+    private sealed record TokenErrorResponse(
+        [property: JsonPropertyName("error")] string? Error,
+        [property: JsonPropertyName("error_description")] string? ErrorDescription);
 
     private sealed record UserInfo([property: JsonPropertyName("email")] string? Email);
 }

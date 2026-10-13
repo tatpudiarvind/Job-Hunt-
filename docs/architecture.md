@@ -1,19 +1,27 @@
-# ARVIND AI JOB HUNTER - Phase 1 Architecture
+# ArvindJobHunter Architecture Guide
 
-## 1. Scope and principles
+## 1. Purpose
 
-Phase 1 establishes boundaries and a buildable solution skeleton. It does not implement real job providers, OpenAI calls, Gmail, browser automation, SQL persistence, authentication, or Word automation. Every external side effect remains behind an abstraction and requires an approval record in later phases.
+This document describes the high-level architecture of ArvindJobHunter, including its major runtime boundaries, project responsibilities, workflow controls, persistence model, and security constraints.
 
-Core principles:
+It is intended to serve as the architectural reference for developers and maintainers.
 
-- Verified candidate facts are authoritative and separate from generated content.
-- External content is untrusted data, never instructions.
-- Read-only master resume; every tailored document is a copy.
-- Preview, approval, execution, and audit are separate steps.
-- Demo mode is the default for development and cannot reach real providers.
-- Operations are idempotent, restartable, correlated, and observable.
+---
 
-## 2. Logical architecture
+## 2. Architectural Principles
+
+The system is designed around the following principles:
+
+- verified candidate facts are authoritative and separate from generated output
+- external content is treated as untrusted data
+- tailored resume output is produced from copies, never by editing the master source in place
+- preview, approval, execution, and audit are distinct stages
+- demo-safe behavior is the default development posture
+- operations should be observable, restartable, and idempotent where practical
+
+---
+
+## 3. Logical System Structure
 
 ```text
 Angular 22 Web
@@ -31,117 +39,207 @@ Windows Worker (separate process)
     -> Playwright adapters where permitted
 ```
 
-The worker uses authenticated loopback HTTP because it is the smallest operational surface for a single Windows workstation. It must bind only to loopback, use a per-installation secret or local certificate, reject non-loopback requests, apply request limits, and report execution as `SUCCESS`, `FAILED`, or `UNKNOWN` with an idempotency key. The API never loads Microsoft Word Interop.
+The API is the central orchestration boundary. The Angular frontend interacts with the API, while worker-based operations remain isolated behind a loopback boundary.
 
-## 3. Projects and responsibilities
+---
+
+## 4. Solution and Project Responsibilities
 
 | Project | Responsibility |
 | --- | --- |
-| `ArvindJobHunter.Domain` | Entities, value objects, enums, invariants, status transitions. No infrastructure dependencies. |
-| `ArvindJobHunter.Contracts` | Versioned API, tool, worker request/response DTOs and discriminated result shapes. |
-| `ArvindJobHunter.Application` | Use cases, ports, approval checks, validation, authorization policies, transaction boundaries. |
-| `ArvindJobHunter.Infrastructure` | Versioned JSON persistence, provider adapters, protected-secret access, audit and telemetry implementations. |
-| `ArvindJobHunter.Agents` | Agent prompts, structured output schemas, tool selection, workflows, safety gates. Agents cannot call infrastructure directly. |
-| `ArvindJobHunter.Api` | HTTP authentication, endpoint composition, middleware, rate limiting, problem details, correlation IDs. |
-| `ArvindJobHunter.Worker` | Windows-hosted command receiver, job leasing, retry/idempotency handling, health reporting. |
-| `ArvindJobHunter.ResumeAutomation` | Word document copy/read/edit/validate operations; master resume protection. |
-| `ArvindJobHunter.Web` | Angular 22 application boundary and feature navigation. |
+| `ArvindJobHunter.Domain` | Domain entities, value objects, status transitions, and invariants with no infrastructure coupling. |
+| `ArvindJobHunter.Contracts` | API contracts, DTOs, request/response shapes, and cross-boundary schemas. |
+| `ArvindJobHunter.Application` | Use cases, validation, ports, approval checks, and authorization-aware workflow coordination. |
+| `ArvindJobHunter.Infrastructure` | JSON persistence, provider adapters, secret handling, and audit/telemetry implementations. |
+| `ArvindJobHunter.Agents` | Agent prompts, structured outputs, tool-selection workflows, and safety-bounded orchestration. |
+| `ArvindJobHunter.Api` | HTTP authentication, endpoint composition, middleware, rate limiting, and public API behavior. |
+| `ArvindJobHunter.Worker` | Local worker command receiver and isolated execution boundary for worker-backed operations. |
+| `ArvindJobHunter.ResumeAutomation` | Resume editing, validation, and working-copy protections. |
+| `ArvindJobHunter.Web` | Angular user interface and feature navigation boundary. |
 
-Tests mirror the important boundaries: domain, application, API, agents, and integration.
+Tests mirror the major boundaries across domain, application, API, agents, and integration layers.
 
-## 4. Domain model
+---
 
-Candidate aggregate: `CandidateProfile`, `CandidateSkill`, `CandidateExperience`, `CandidateEducation`, `CandidateProject`, `CandidatePreference`, `CandidateDocument`.
+## 5. Domain and Workflow Model
 
-Job aggregate: `Job`, `JobSource`, `JobRequirement`, `JobAnalysis`, `JobMatch`.
+Primary business areas include:
 
-Recruiter aggregate: `Recruiter`, `RecruiterEmail`.
+- candidate profile and verified facts
+- jobs and job analysis
+- applications and application tracking
+- tailored resume and email artifacts
+- approvals and execution receipts
+- integration connections and audit records
 
-Application aggregate: `Application`, `ApplicationAnswer`, `Interview`, `FollowUp`.
+Representative workflow states include:
 
-Content and execution: `ResumeTemplate`, `ResumeVersion`, `ResumeChange`, `CoverLetter`, `EmailDraft`, `EmailMessage`, `ApprovalRequest`, `ApprovalAction`, `AgentRun`, `AgentToolCall`, `AuditLog`, `IntegrationConnection`.
+- Job: `DISCOVERED -> ANALYZED -> QUALIFIED`
+- Application execution: `QUALIFIED -> PREPARED -> WAITING_FOR_APPROVAL -> APPROVED -> EXECUTING -> SUCCESS | FAILED | UNKNOWN`
 
-All persisted records use GUID identifiers, UTC timestamps, optimistic concurrency tokens, and explicit status enums. Candidate facts require provenance and verification state. Generated text is immutable once approved; a content hash is stored with each approval.
+Workflow transitions are validated and audited. Any approval-sensitive change to payload, recipient, attachment, or generated content invalidates the prior approval and returns the flow to an approval-required state.
 
-## 5. API boundary
+---
 
-The API is organized by resource/use case, not by provider:
+## 6. API Boundary
 
-- `/api/candidate-profile` for verified profile facts and documents.
-- `/api/jobs`, `/api/jobs/{id}/analysis`, `/api/jobs/{id}/match` for discovery and analysis.
-- `/api/recruiters` for discovered contacts and verification state.
-- `/api/resumes` and `/api/resumes/{id}/changes` for versions and reports.
-- `/api/applications` for preparation and tracking.
-- `/api/approvals` for action-specific approval lifecycle.
-- `/api/emails` for drafts, metadata, and authorized send operations.
-- `/api/dashboard`, `/api/market-intelligence`, `/api/agent-runs`, `/api/audit-logs` for read models.
-- `/api/integrations` for OAuth connection lifecycle, never raw tokens.
+The API is organized around product use cases rather than provider-specific implementations.
 
-External actions use command endpoints with idempotency keys and return an execution receipt. They cannot be invoked by read endpoints or generic agent endpoints.
+Key areas include:
 
-## 6. Agent and tool boundaries
+- candidate profile management
+- jobs, analysis, and matching
+- resumes and resume changes
+- applications and follow-up workflows
+- approvals and execution
+- email drafts and send operations
+- dashboard, activity, audit, and read-model endpoints
+- integrations such as Google OAuth and Gmail
 
-Agents are bounded by capability: Job Discovery, Job Analysis, Job Match, Recruiter Discovery, Resume Tailoring, Cover Letter, Application Preparation, Email, Follow-up, and Market Intelligence. The orchestrator owns state and sequencing; agents only propose structured outputs.
+The integrations surface is intentionally designed so raw secrets and tokens are not exposed through ordinary read endpoints.
 
-Tools are explicit, schema-validated, authorized, and audited: `SearchJobsTool`, `AnalyzeJobTool`, `MatchJobTool`, `FindRecruiterTool`, `VerifyEmailTool`, `ReadResumeTool`, `CustomizeResumeTool`, `GenerateCoverLetterTool`, `PrepareApplicationTool`, `CreateGmailDraftTool`, `SendGmailEmailTool`, `SubmitApplicationTool`, `TrackApplicationTool`, `ScheduleFollowUpTool`, and `AnalyzeMarketTool`.
+---
 
-High-risk tools (`SendGmailEmailTool`, `SubmitApplicationTool`, upload, and follow-up send) require a matching, unexpired approval context. The tool verifies the action type, target, content hash, resume version, application payload hash, user, and demo/real provider mode.
+## 7. Agent and Tool Boundaries
 
-## 7. Workflow state machines
+Agents are bounded by capability area, such as:
 
-Job discovery: `DISCOVERED -> ANALYZED -> QUALIFIED`.
+- job discovery
+- job analysis and match
+- recruiter discovery
+- resume tailoring
+- cover letter generation
+- application preparation
+- email preparation
+- follow-up assistance
+- market intelligence
 
-Application: `QUALIFIED -> PREPARED -> WAITING_FOR_APPROVAL -> APPROVED -> EXECUTING -> SUCCESS | FAILED | UNKNOWN`.
+Agents do not directly invoke infrastructure. They operate through explicit tools and structured outputs controlled by the orchestrator.
 
-Application tracking uses `DISCOVERED`, `MATCHED`, `SHORTLISTED`, `RESUME_PREPARED`, `AWAITING_APPROVAL`, `APPROVED`, `APPLIED`, `RECRUITER_CONTACTED`, `RECRUITER_REPLIED`, `INTERVIEW`, `TECHNICAL_INTERVIEW`, `HR_INTERVIEW`, `OFFER`, `REJECTED`, `WITHDRAWN`, and `CLOSED`.
+High-risk actions require an approval context and must satisfy action, target, content, and user validation constraints before execution.
 
-Every transition is validated, persisted with an audit event, and safe to replay. Approval is action-specific. Any change to recipient, body, attachment, resume version, or application payload invalidates the approval and returns the workflow to `WAITING_FOR_APPROVAL`.
+---
 
-## 8. Local persistence
+## 8. Persistence and Local Storage
 
-Phase 2 has no database dependency. In-memory state is loaded from versioned JSON files during startup and mutations persist the changed aggregate atomically. Infrastructure owns JSON envelopes, in-process write locks, backups, corrupt-file quarantine, and future schema migration. Application and Domain do not know file paths or JSON details.
+The current implementation uses JSON-based local persistence rather than a database dependency.
 
-Sensitive integration data is outside ordinary JSON files; OAuth refresh tokens and API keys are protected with Windows DPAPI or a configured secret manager. Audit records store actor, action, target, outcome, correlation ID, timestamp, and redacted metadata.
+Characteristics:
 
-## 9. Resume automation
+- versioned JSON document storage
+- local data directory under configured storage settings
+- backup and corruption-recovery support owned by infrastructure
+- application/domain layers remain unaware of file and serialization details
 
-The API requests a worker operation with the master path, working-copy destination, approved change set, and content hash. The worker verifies that source and destination differ, source is configured as read-only by policy, destination is inside an allowed working directory, and the operation is idempotent. Word Interop runs only in the worker process, closes documents and the application in `finally` paths, and validates that the source hash is unchanged and the output opens successfully. The master file is never saved in place.
+Sensitive integration data such as refresh tokens and API keys must be protected using the supported secret-protection mechanisms rather than plain ordinary storage.
 
-Tailoring is constrained to small edits supported by verified facts. A change report records old/new text, section, reason, protected-field checks, unsupported-claim checks, and estimated modification percentage. No change is forced when evidence is insufficient.
+Related document:
 
-## 10. Security architecture
+- `docs/json-storage.md`
 
-Use authenticated users and resource authorization. Validate DTOs and URLs, enforce SSRF allowlists and DNS/IP checks, scan and size-limit uploads, redact secrets and personal data in logs, and apply rate limits per user and integration. Treat job descriptions, recruiter pages, emails, and uploaded documents as hostile data. Prompt templates clearly delimit data and state that data cannot override system instructions. Structured outputs are validated against schemas and candidate facts before persistence.
+---
 
-Approval and audit are mandatory around side effects. Demo mode uses fake providers only, has a hard no-network policy for external integrations, and is covered by tests.
+## 9. Resume Automation Boundary
 
-## 11. Configuration and local development
+Resume automation is intentionally constrained.
 
-Configuration layers: `appsettings.json`, environment-specific appsettings, user secrets for development, environment variables for deployment, and an external secret manager in production. Never commit tokens or the master resume path if it is user-specific.
+Key rules:
 
-Required future variables include `ConnectionStrings__SqlServer`, `Auth__Authority`, `Auth__ClientId`, `OpenAI__Endpoint`, `OpenAI__ApiKey`, `Google__ClientId`, `Google__ClientSecret`, `Worker__BaseUrl`, `Worker__SharedSecret`, `Resume__MasterPath`, `Resume__WorkingDirectory`, `Providers__Mode`, and `Providers__AllowedDomains`. Secret values must be supplied through a secret store, not checked into source.
+- the master resume is never edited in place
+- all tailoring occurs on working copies
+- worker-side processing validates source/destination safety rules
+- generated changes remain bounded and evidence-driven
+- change reporting records what was modified and why
 
-Local prerequisites: .NET 10 SDK, Node.js, and Angular CLI 22. Microsoft Word is not required for Phase 2; it is only needed for the later Windows worker phase. No SQL Server, Docker, or database service is required. The application persists local state under `Storage:DataDirectory` using JSON files.
+This protects the source resume while preserving traceability over generated output.
 
-## 12. Demo mode
+---
 
-Demo mode is explicit configuration and the default test mode. It supplies deterministic sample jobs, recruiters, email drafts, fake resume copies, and fake application portals. It cannot send Gmail, call OpenAI, browse real portals, or submit a real application. Every demo receipt is labeled `DEMO` and every test asserts no real provider was reached.
+## 10. Security Architecture
 
-## 13. Testing strategy
+Security expectations include:
 
-Unit tests cover invariants, scoring, approval hashes, protected resume fields, and state transitions. Agent tests use deterministic structured fixtures and prompt-injection cases. API tests cover authorization, validation, idempotency, and problem details. Integration tests use isolated temporary JSON directories. Resume tests use a fixture DOCX and verify source hash, formatting-sensitive markers, output existence, and cleanup. End-to-end tests cover approval UI to demo execution. Security tests cover SSRF, upload validation, secret redaction, hostile external content, and demo isolation.
+- authenticated access and resource-level authorization
+- DTO and URL validation
+- upload scanning and size restrictions
+- rate limiting for sensitive operations
+- secret redaction in logs
+- strict separation between untrusted external data and trusted instructions
+- approval and audit around externally impactful side effects
 
-## 14. Decisions requiring user approval
+Demo mode further reduces risk by preventing real external-provider actions.
 
-1. Authentication provider and whether the first deployment is single-user local-only.
-2. Local data-directory location and backup retention.
-3. Worker transport credential: shared secret or local certificate.
-4. Master resume path and working directory.
-5. Real provider subscriptions and permitted job sources.
-6. Google OAuth consent configuration and Gmail scopes.
-7. OpenAI deployment/model, retention settings, and budget limits.
-8. Whether any follow-up policy may be automated after explicit opt-in.
-9. Data retention, backup, and deletion policy.
-10. Countries, work-authorization answers, and other sensitive application defaults.
+---
 
-Phase 2 must not begin until these decisions are confirmed where they affect implementation.
+## 11. Configuration Model
+
+Configuration may be layered through:
+
+- `appsettings.json`
+- environment-specific appsettings
+- development user secrets
+- environment variables
+- production secret managers
+
+Secret values must not be committed to source control.
+
+Examples of configuration areas include:
+
+- LLM provider configuration
+- Google OAuth credentials
+- worker endpoint and shared secret
+- storage configuration
+- future provider and deployment settings
+
+---
+
+## 12. Local Development Context
+
+Local development expects:
+
+- .NET 10 SDK
+- Node.js
+- Angular-compatible frontend tooling
+- no SQL Server or database service for the current JSON-backed workflow
+
+Microsoft Word is not required for the current local development path unless a later worker scenario explicitly depends on it.
+
+Related document:
+
+- `docs/local-development.md`
+
+---
+
+## 13. Testing Strategy
+
+The architecture supports layered testing across:
+
+- domain invariants and state transitions
+- approval and payload hashing behavior
+- API authorization and validation
+- integration behavior with isolated temporary JSON storage
+- end-to-end workflow checks for approval and execution boundaries
+- security-oriented cases such as SSRF, hostile content, and secret redaction
+
+---
+
+## 14. Governance and Product Decisions
+
+Some architectural areas require explicit owner decisions before production hardening or later implementation phases. These include:
+
+1. authentication strategy
+2. local data-directory and backup policy
+3. worker transport credential model
+4. resume source and working-directory policy
+5. approved provider integrations and sources
+6. Google OAuth and Gmail consent/scopes
+7. LLM deployment and budget constraints
+8. follow-up automation policy
+9. retention and deletion policy
+10. user-sensitive default answers and compliance behavior
+
+---
+
+## 15. Summary
+
+ArvindJobHunter is designed as a local-first, approval-first system with clear boundaries between UI, API, orchestration, storage, integrations, and worker-backed execution. Its architecture prioritizes safety, observability, and controlled side effects while supporting structured automation across the job-search workflow.

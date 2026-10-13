@@ -1,6 +1,8 @@
 using System.Net;
-using ArvindJobHunter.Infrastructure.Jobs;
+using System.Net.Sockets;
 using Xunit;
+using static ArvindJobHunter.Infrastructure.Jobs.HttpJobPostingFetcher;
+using ArvindJobHunter.Infrastructure.Jobs;
 
 namespace ArvindJobHunter.IntegrationTests;
 

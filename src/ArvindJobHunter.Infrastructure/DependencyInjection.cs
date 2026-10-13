@@ -24,7 +24,7 @@ public static class DependencyInjection
         GoogleOAuthConfiguration googleOptions,
         WorkerOptions? workerOptions = null)
     {
-        services.AddSingleton<IJsonStore<List<AuditEvent>>>(sp => new JsonFileStore<List<AuditEvent>>(dataDirectory, "audit.json", logger: StoreLogger(sp)));
+        services.AddSingleton<IJsonStore<List<AuditEvent>>>(sp => new JsonFileStore<List<AuditEvent>>(dataDirectory, "audit.json", null, StoreLogger(sp)));
         services.AddSingleton<IAuditStore, JsonAuditStore>();
 
         AddStore<CandidateProfileDocument>(services, dataDirectory, "candidate.json");
@@ -78,9 +78,8 @@ public static class DependencyInjection
             services.AddSingleton<IResumeDocumentService>(sp => sp.GetRequiredService<OpenXmlResumeDocumentService>());
         }
 
-        services.AddSingleton<IGoogleOAuthSettingsProvider>(sp => new JsonGoogleOAuthSettingsProvider(appSettingsPath, googleOptions, sp.GetRequiredService<ILogger<JsonGoogleOAuthSettingsProvider>>()));
-        services.AddHttpClient(GoogleOAuthService.HttpClientName);
-        // Singleton: the OAuth state issued by /authorize must survive until Google calls /callback.
+        services.AddSingleton<IGoogleOAuthSettingsProvider>(_ => new JsonGoogleOAuthSettingsProvider(appSettingsPath, googleOptions));
+        services.AddHttpClient("GoogleOAuth");
         services.AddSingleton<IGoogleOAuthService>(sp => new GoogleOAuthService(
             sp.GetRequiredService<IHttpClientFactory>(),
             sp.GetRequiredService<IDataProtectionProvider>().CreateProtector("ArvindJobHunter.GoogleOAuth.v1"),
