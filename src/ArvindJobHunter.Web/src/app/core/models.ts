@@ -38,7 +38,7 @@ export interface ApprovalRequest {
 
 export interface ExecutionReceipt {
   id: string; approvalId: string; idempotencyKey: string; actionType: string; mode: ExecutionMode;
-  result: 'SUCCESS' | 'FAILED' | 'UNKNOWN'; externalReference: string | null; message: string | null; executedAt: string;
+  result: 'SUCCESS' | 'FAILED' | 'UNKNOWN'; externalReference: string | null; websiteUrl: string | null; message: string | null; executedAt: string;
 }
 
 export interface ResumeChange { section: string; oldText: string; newText: string; evidence: string[]; }

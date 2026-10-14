@@ -53,9 +53,9 @@ public static class ReadModelEndpoints
             }
 
             var provider = (request.LlmProvider ?? current.LlmProvider).Trim();
-            if (!string.Equals(provider, "Demo", StringComparison.OrdinalIgnoreCase) && !string.Equals(provider, "OpenAI", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(provider, "Demo", StringComparison.OrdinalIgnoreCase) && !OpenAiLlmProvider.Handles(provider))
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["llmProvider"] = ["LLM provider must be Demo or OpenAI-compatible."] });
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["llmProvider"] = ["LLM provider must be Demo, OpenAI-compatible, or Gemini."] });
             }
 
             var displayName = (request.LlmDisplayName ?? current.LlmDisplayName).Trim();
@@ -69,7 +69,7 @@ public static class ReadModelEndpoints
             var errors = new Dictionary<string, string[]>();
 
             if (string.IsNullOrWhiteSpace(displayName)) errors["llmDisplayName"] = ["Display name is required."];
-            if (string.Equals(provider, "OpenAI", StringComparison.OrdinalIgnoreCase))
+            if (OpenAiLlmProvider.Handles(provider))
             {
                 if (string.IsNullOrWhiteSpace(baseUrl)) errors["llmBaseUrl"] = ["Base URL is required for OpenAI-compatible providers."];
                 else if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out _)) errors["llmBaseUrl"] = ["Base URL must be an absolute URL."];

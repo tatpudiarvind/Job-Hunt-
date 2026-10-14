@@ -17,6 +17,7 @@ public sealed class ExecuteApprovedActionCommand(
     IRepository<ExecutionReceipt> receipts,
     IRepository<ResumeVersion> resumes,
     IRepository<EmailDraft> drafts,
+    IRepository<Job> jobs,
     IResumeDocumentService resumeDocuments,
     IGmailClient gmail,
     ApplicationService applications,
@@ -73,7 +74,7 @@ public sealed class ExecuteApprovedActionCommand(
             {
                 // Record a receipt instead of surfacing a bare 500: the approval stays usable and the failure is audited.
                 logger.LogError(ex, "Execution of approval {ApprovalId} ({Action}) failed", approvalId, approval.ActionType);
-                receipt = Receipt(approval, idempotencyKey, current.Mode, ExecutionResult.FAILED, null, $"Execution failed: {ex.Message}");
+                receipt = Receipt(approval, idempotencyKey, current.Mode, ExecutionResult.FAILED, null, null, $"Execution failed: {ex.Message}");
             }
 
             // The outcome must be recorded even if the browser went away meanwhile; otherwise a sent email would leave
@@ -97,17 +98,18 @@ public sealed class ExecuteApprovedActionCommand(
             ?? throw new KeyNotFoundException("Resume version not found.");
         guard.EnsureAllowed(approval, ApprovalActionType.APPLY_RESUME_CHANGES, ApprovalRequest.ComputeHash(version.PayloadForApproval()), current.Mode);
 
+        var websiteUrl = await GetJobUrlAsync(version.JobId, cancellationToken);
         if (current.Mode != ExecutionMode.LIVE)
         {
             await resumes.UpsertAsync(version.MarkApproved(), cancellationToken);
-            return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, null, $"{current.Mode} mode: resume changes approved and recorded; no document was written.");
+            return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, null, websiteUrl, $"{current.Mode} mode: resume changes approved and recorded; no document was written.");
         }
 
         if (string.IsNullOrWhiteSpace(version.MasterPath) || !File.Exists(version.MasterPath))
         {
             logger.LogWarning("LIVE resume execution for approval {ApprovalId} skipped: master resume {MasterPath} not found",
                 approval.Id, string.IsNullOrWhiteSpace(version.MasterPath) ? "(not configured)" : version.MasterPath);
-            return Receipt(approval, key, current.Mode, ExecutionResult.FAILED, null,
+            return Receipt(approval, key, current.Mode, ExecutionResult.FAILED, null, websiteUrl,
                 "LIVE mode: the master resume this version was prepared from was not found, so no document was written. Configure the master resume in Settings, then prepare the application again.");
         }
 
@@ -122,7 +124,7 @@ public sealed class ExecuteApprovedActionCommand(
             await applications.TryAdvanceAsync(application.WithResume(version.Id), ApplicationStatus.RESUME_PREPARED, "Tailored resume generated.", userId, cancellationToken);
         }
 
-        return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, report.OutputPath, $"Applied {report.Applied.Count} change(s); skipped {report.Skipped.Count}.");
+        return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, report.OutputPath, websiteUrl, $"Applied {report.Applied.Count} change(s); skipped {report.Skipped.Count}.");
     }
 
     private async Task<ExecutionReceipt> EmailAsync(ApprovalRequest approval, string key, RuntimeSettings current, bool send, Guid userId, CancellationToken cancellationToken)
@@ -132,10 +134,15 @@ public sealed class ExecuteApprovedActionCommand(
         var action = send ? ApprovalActionType.SEND_EMAIL : ApprovalActionType.CREATE_EMAIL_DRAFT;
         guard.EnsureAllowed(approval, action, ApprovalRequest.ComputeHash(draft.PayloadForApproval()), current.Mode);
 
+        var websiteUrl = draft.JobId is { } jobId ? await GetJobUrlAsync(jobId, cancellationToken) : null;
         if (current.Mode != ExecutionMode.LIVE)
         {
             await drafts.UpsertAsync(draft.MarkApproved(), cancellationToken);
-            return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, null, $"{current.Mode} mode: email approved and recorded; Gmail was not contacted.");
+            if (send && draft.JobId is { } simulatedJobId)
+            {
+                await MarkApplicationAppliedAsync(simulatedJobId, userId, cancellationToken, $"{current.Mode} mode: application submitted locally.");
+            }
+            return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, null, websiteUrl, $"{current.Mode} mode: { (send ? "application submitted locally and recorded; Gmail was not contacted." : "email approved and recorded; Gmail was not contacted.") }");
         }
 
         // Point of no return: once the request goes to Gmail the outcome must be recorded, so the browser request's
@@ -151,7 +158,7 @@ public sealed class ExecuteApprovedActionCommand(
         catch (Exception ex)
         {
             logger.LogError(ex, "Gmail {Operation} for draft {DraftId} threw; the outcome is unknown", send ? "send" : "draft creation", draft.Id);
-            return Receipt(approval, key, current.Mode, ExecutionResult.UNKNOWN, null,
+            return Receipt(approval, key, current.Mode, ExecutionResult.UNKNOWN, null, websiteUrl,
                 $"Gmail call failed ({ex.GetType().Name}: {ex.Message}). The {(send ? "email may or may not have been sent" : "draft may or may not have been created")}; check Gmail before requesting a new approval.");
         }
 
@@ -159,17 +166,16 @@ public sealed class ExecuteApprovedActionCommand(
         {
             // Gmail rejected the request, so nothing was sent and the approval stays usable for a retry.
             await drafts.UpsertAsync(draft.MarkFailed(), CancellationToken.None);
-            return Receipt(approval, key, current.Mode, ExecutionResult.FAILED, null, result.Error);
+            return Receipt(approval, key, current.Mode, ExecutionResult.FAILED, null, websiteUrl, result.Error);
         }
 
-        var message = send ? "Email sent via Gmail." : "Draft created in Gmail.";
+        var message = send ? "Application submitted via Gmail." : "Draft created in Gmail.";
         try
         {
             await drafts.UpsertAsync(send ? draft.MarkSent(result.ExternalId!) : draft.MarkCreatedInGmail(result.ExternalId!), CancellationToken.None);
-            if (draft.JobId is { } jobId && send)
+            if (send && draft.JobId is { } sentJobId)
             {
-                var application = await applications.GetByJobAsync(jobId, CancellationToken.None);
-                if (application is not null) await applications.TryAdvanceAsync(application, ApplicationStatus.RECRUITER_CONTACTED, "Email sent.", userId, CancellationToken.None);
+                await MarkApplicationAppliedAsync(sentJobId, userId, CancellationToken.None, "Application submitted.");
             }
         }
         catch (Exception ex)
@@ -179,9 +185,24 @@ public sealed class ExecuteApprovedActionCommand(
             message += $" Updating the local draft or application afterwards failed: {ex.Message}";
         }
 
-        return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, result.ExternalId, message);
+        return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, result.ExternalId, websiteUrl, message);
     }
 
-    private static ExecutionReceipt Receipt(ApprovalRequest approval, string key, ExecutionMode mode, ExecutionResult result, string? externalRef, string? message) =>
-        new(Guid.NewGuid(), approval.Id, key, approval.ActionType, mode, result, externalRef, message, DateTimeOffset.UtcNow);
+    private async Task<string?> GetJobUrlAsync(Guid jobId, CancellationToken cancellationToken)
+    {
+        var job = await jobs.GetAsync(jobId, cancellationToken);
+        return string.IsNullOrWhiteSpace(job?.Url) ? null : job.Url;
+    }
+
+    private async Task MarkApplicationAppliedAsync(Guid jobId, Guid userId, CancellationToken cancellationToken, string reason)
+    {
+        var application = await applications.GetByJobAsync(jobId, cancellationToken);
+        if (application is not null)
+        {
+            await applications.TryAdvanceAsync(application, ApplicationStatus.APPLIED, reason, userId, cancellationToken);
+        }
+    }
+
+    private static ExecutionReceipt Receipt(ApprovalRequest approval, string key, ExecutionMode mode, ExecutionResult result, string? externalRef, string? websiteUrl, string? message) =>
+        new(Guid.NewGuid(), approval.Id, key, approval.ActionType, mode, result, externalRef, websiteUrl, message, DateTimeOffset.UtcNow);
 }

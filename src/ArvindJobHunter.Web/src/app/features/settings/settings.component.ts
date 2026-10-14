@@ -69,9 +69,10 @@ import { NotifyService } from '../../shared/notify.service';
 
               <mat-form-field appearance="outline" subscriptSizing="dynamic">
                 <mat-label>LLM provider</mat-label>
-                <mat-select name="llmProvider" [(ngModel)]="form.llmProvider">
+                <mat-select name="llmProvider" [(ngModel)]="form.llmProvider" (selectionChange)="onProviderChange($event.value)">
                   <mat-option value="Demo">Demo (offline, deterministic)</mat-option>
                   <mat-option value="OpenAI">OpenAI-compatible API</mat-option>
+                  <mat-option value="Gemini">Google Gemini</mat-option>
                 </mat-select>
               </mat-form-field>
 
@@ -81,11 +82,11 @@ import { NotifyService } from '../../shared/notify.service';
                 <mat-hint>Friendly name shown in the header and activity views.</mat-hint>
               </mat-form-field>
 
-              @if (form.llmProvider === 'OpenAI') {
+              @if (form.llmProvider === 'OpenAI' || form.llmProvider === 'Gemini') {
                 <mat-form-field appearance="outline" subscriptSizing="dynamic">
                   <mat-label>Base URL</mat-label>
                   <input matInput name="llmBaseUrl" [(ngModel)]="form.llmBaseUrl" placeholder="https://api.openai.com/v1/" required />
-                  <mat-hint>Must point to an OpenAI-compatible API root.</mat-hint>
+                  <mat-hint>{{ form.llmProvider === 'Gemini' ? 'Gemini OpenAI-compatible endpoint. Create a key at aistudio.google.com/apikey.' : 'Must point to an OpenAI-compatible API root.' }}</mat-hint>
                 </mat-form-field>
 
                 <mat-form-field appearance="outline" subscriptSizing="dynamic">
@@ -100,7 +101,7 @@ import { NotifyService } from '../../shared/notify.service';
                 <mat-form-field appearance="outline" subscriptSizing="dynamic">
                   <mat-label>Model</mat-label>
                   <input matInput name="llmModel" [(ngModel)]="form.llmModel" placeholder="gpt-4o-mini" required />
-                  <mat-hint>Example: gpt-4o-mini, gpt-4.1-mini, llama3.1:8b, mistral-small.</mat-hint>
+                  <mat-hint>{{ form.llmProvider === 'Gemini' ? 'Example: gemini-3.5-flash-lite, gemini-3.5-flash.' : 'Example: gpt-4o-mini, gpt-4.1-mini, llama3.1:8b, mistral-small.' }}</mat-hint>
                 </mat-form-field>
               } @else {
                 <div class="alert info compact">
@@ -302,6 +303,18 @@ export class SettingsComponent {
       this.notify.success('Settings saved locally.');
     });
   }
+
+  onProviderChange(provider: string): void {
+    const presets: Record<string, { name: string; baseUrl: string; model: string }> = {
+      Gemini: { name: 'Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', model: 'gemini-3.5-flash-lite' },
+      OpenAI: { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1/', model: 'gpt-4o-mini' },
+      Demo: { name: 'Demo', baseUrl: this.form.llmBaseUrl, model: this.form.llmModel }
+    };
+    const preset = presets[provider];
+    if (!preset) return;
+    this.form = { ...this.form, llmDisplayName: preset.name, llmBaseUrl: preset.baseUrl, llmModel: preset.model, llmApiKey: '' };
+  }
+
   googleConfigured() { return !!this.googleForm.clientId.trim() && !!this.googleForm.clientSecret.trim() && !!this.googleForm.redirectUri.trim(); }
   saveGoogleOAuth() {
     return this.run(async () => {

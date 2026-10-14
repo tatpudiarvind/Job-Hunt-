@@ -15,11 +15,13 @@ public sealed class LlmProviderResolver(IEnumerable<ILlmProvider> providers, IRu
     {
         var current = await settings.GetAsync(cancellationToken);
         var list = providers.ToList();
-        var requested = list.FirstOrDefault(p => string.Equals(p.Name, current.LlmProvider, StringComparison.OrdinalIgnoreCase));
+        var requested = OpenAiLlmProvider.Handles(current.LlmProvider)
+            ? list.OfType<OpenAiLlmProvider>().FirstOrDefault()
+            : list.FirstOrDefault(p => string.Equals(p.Name, current.LlmProvider, StringComparison.OrdinalIgnoreCase));
         if (requested is OpenAiLlmProvider openAi && openAi.CanResolve(current)) return Healthy(openAi);
         if (requested is OpenAiLlmProvider)
         {
-            WarnOnce("openai-without-key", "LLM provider OpenAI is selected but no API key is configured; agent runs will fail until a key is set in Settings");
+            WarnOnce("openai-without-key", "LLM provider {Provider} is selected but no API key is configured; agent runs will fail until a key is set in Settings", current.LlmProvider);
             return requested;
         }
 

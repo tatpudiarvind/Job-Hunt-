@@ -28,7 +28,7 @@ public sealed class ExecuteApprovedActionCommandTests : IDisposable
         var audit = new AuditService(auditStore, NullLogger<AuditService>.Instance);
         return new ExecuteApprovedActionCommand(
             new ApprovalService(approvals, settings, audit, NullLogger<ApprovalService>.Instance),
-            new ExternalActionGuard(), settings, receipts, resumes, drafts, documents, gmail,
+            new ExternalActionGuard(), settings, receipts, resumes, drafts, new InMemoryRepository<Job>(j => j.Id), documents, gmail,
             new ApplicationService(applications, audit, NullLogger<ApplicationService>.Instance), audit, NullLogger<ExecuteApprovedActionCommand>.Instance);
     }
 
@@ -292,3 +292,4 @@ public sealed class EmailRecipientValidationTests
     [InlineData("a@example.com\r\nBcc: everyone@example.com", false)]
     public void HasValidRecipients(string to, bool expected) => Assert.Equal(expected, EmailDraftService.HasValidRecipients(to));
 }
+

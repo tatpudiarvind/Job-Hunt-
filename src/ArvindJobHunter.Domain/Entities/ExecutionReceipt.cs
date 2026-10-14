@@ -8,5 +8,6 @@ public sealed record ExecutionReceipt(
     ExecutionMode Mode,
     ExecutionResult Result,
     string? ExternalReference,
+    string? WebsiteUrl,
     string? Message,
     DateTimeOffset ExecutedAt);
