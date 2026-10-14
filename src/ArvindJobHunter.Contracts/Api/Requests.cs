@@ -46,7 +46,25 @@ public sealed record SettingsResponse(string Mode, string LlmProvider, string Ll
 
 public sealed record GoogleOAuthSettingsResponse(string ClientId, string ClientSecret, string RedirectUri, bool Configured);
 
+public sealed record JobSearchPreferencesResponse(
+    IReadOnlyList<string> PreferredCountries,
+    string? LinkedInProfileUrl,
+    string? ResumeLinkedInProfileUrl,
+    string? EffectiveLinkedInProfileUrl,
+    IReadOnlyList<string> PreferredRoles,
+    string? WorkMode,
+    string? SalaryExpectation,
+    string? WorkAuthorization);
+
 public sealed record UpdateSettingsRequest(string? Mode, string? LlmProvider, string? LlmDisplayName, string? LlmBaseUrl, string? LlmApiKey, string? LlmModel, string? MasterResumePath);
+
+public sealed record UpdateJobSearchPreferencesRequest(
+    IReadOnlyList<string>? PreferredCountries,
+    string? LinkedInProfileUrl,
+    IReadOnlyList<string>? PreferredRoles,
+    string? WorkMode,
+    string? SalaryExpectation,
+    string? WorkAuthorization);
 
 public sealed record UpdateGoogleOAuthSettingsRequest(
     [property: Required] string ClientId,

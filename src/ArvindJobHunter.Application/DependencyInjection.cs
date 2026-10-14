@@ -13,9 +13,11 @@ public static class DependencyInjection
         services.AddScoped<CandidateFactService>();
         services.AddScoped<ApprovalService>();
         services.AddScoped<JobService>();
+        services.AddScoped<JobDiscoveryService>();
         services.AddSingleton<InterviewPrepService>();
         services.AddScoped<ApplicationService>();
         services.AddScoped<ResumeService>();
+        services.AddScoped<ResumeAnalysisService>();
         services.AddScoped<EmailDraftService>();
         services.AddScoped<AgentRunService>();
         services.AddScoped<ExecuteApprovedActionCommand>();

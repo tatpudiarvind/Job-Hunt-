@@ -63,9 +63,23 @@ export interface AgentRun {
 
 export interface AuditEvent { id: string; action: string; targetType: string; targetId: string; outcome: string; details: string | null; correlationId?: string | null; at: string; }
 
+export interface JobDiscoveryResult {
+  jobs: Job[]; imported: number; updated: number; skipped: number; sources: string[]; notes: string[];
+}
+
 export interface JobPipelineResult { run: AgentRun; job: Job; resume: ResumeVersion | null; coverLetter: EmailDraft | null; resumeApproval: ApprovalRequest | null; }
 
 export interface Settings { mode: ExecutionMode; llmProvider: string; llmDisplayName: string; llmBaseUrl: string; llmConfigured: boolean; llmModel: string; openAiConfigured: boolean; masterResumePath: string; masterResumeExists: boolean; dataDirectory: string; }
+export interface JobSearchPreferences {
+  preferredCountries: string[];
+  linkedInProfileUrl: string | null;
+  resumeLinkedInProfileUrl: string | null;
+  effectiveLinkedInProfileUrl: string | null;
+  preferredRoles: string[];
+  workMode: string | null;
+  salaryExpectation: string | null;
+  workAuthorization: string | null;
+}
 export interface GoogleOAuthSettings { clientId: string; clientSecret: string; redirectUri: string; configured: boolean; }
 export interface GoogleStatus { configured: boolean; connected: boolean; accountEmail?: string | null; }
 export interface JobPostingDraft { url: string; title: string | null; company: string | null; location: string | null; description: string; source: string; warnings: string[]; }

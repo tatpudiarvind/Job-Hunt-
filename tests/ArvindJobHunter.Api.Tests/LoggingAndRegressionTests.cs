@@ -1,6 +1,8 @@
 using System.Net;
+using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security;
 using System.Text.Json;
 using ArvindJobHunter.Application.Abstractions;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -182,10 +184,24 @@ public sealed class LoggingAndRegressionTests : IClassFixture<ApiFactory>
         })).EnsureSuccessStatusCode();
 
         using var form = new MultipartFormDataContent();
-        var file = new ByteArrayContent([0x50, 0x4B, 0x03, 0x04]);
+        var file = new ByteArrayContent(CreateResumeDocx(
+            "Arvind Tatpudi",
+            "Senior .NET Engineer",
+            "Skills",
+            "C#, ASP.NET Core, Azure, Docker",
+            "Experience",
+            "2021-Present Senior .NET Engineer at Contoso",
+            "Education",
+            "Master of Science, University of Leeds",
+            "Certifications",
+            "Azure Developer Associate",
+            "Preferences",
+            "Remote, UK, Europe"));
         file.Headers.ContentType = new MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
         form.Add(file, "file", "My Resume.docx");
-        (await client.PostAsync("/api/settings/master-resume", form)).EnsureSuccessStatusCode();
+        var upload = await client.PostAsync("/api/settings/master-resume", form);
+        upload.EnsureSuccessStatusCode();
+        var uploadBody = await upload.Content.ReadFromJsonAsync<JsonElement>();
 
         var settings = await client.GetFromJsonAsync<JsonElement>("/api/settings");
         Assert.Equal("OpenAI", settings.GetProperty("llmProvider").GetString());
@@ -194,6 +210,19 @@ public sealed class LoggingAndRegressionTests : IClassFixture<ApiFactory>
         Assert.True(settings.GetProperty("llmConfigured").GetBoolean());
         Assert.EndsWith("master-My Resume.docx", settings.GetProperty("masterResumePath").GetString());
         Assert.Contains("upload-test-key", await File.ReadAllTextAsync(Path.Combine(isolated.DataDirectory, "settings.json")));
+
+        var analysis = uploadBody.GetProperty("analysis");
+        Assert.Equal("Arvind Tatpudi", analysis.GetProperty("name").GetString());
+        Assert.Equal("Senior .NET Engineer", analysis.GetProperty("currentRole").GetString());
+        Assert.True(analysis.GetProperty("skillFacts").GetInt32() >= 1);
+        Assert.True(analysis.GetProperty("totalFacts").GetInt32() >= 4);
+
+        var profile = await client.GetFromJsonAsync<JsonElement>("/api/candidate-profile");
+        Assert.Equal("Arvind Tatpudi", profile.GetProperty("name").GetString());
+        Assert.Equal("Senior .NET Engineer", profile.GetProperty("currentRole").GetString());
+
+        var facts = await client.GetFromJsonAsync<JsonElement>("/api/candidate-profile/facts");
+        Assert.Contains(facts.EnumerateArray(), f => f.GetProperty("sourceType").GetString() == "RESUME" && f.GetProperty("factType").GetString() == "SKILL");
     }
 
     [Fact]
@@ -224,5 +253,39 @@ public sealed class LoggingAndRegressionTests : IClassFixture<ApiFactory>
 
         var log = await WaitForLogAsync(isolated.DataDirectory, "Tool AnalyzeJobTool failed", $"Agent run {runId} FAILED", $"POST /api/jobs/{jobId}/analyze → 502");
         Assert.DoesNotContain("test-key", log);
+    }
+
+    private static byte[] CreateResumeDocx(params string[] paragraphs)
+    {
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            WriteEntry(archive, "[Content_Types].xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
+                "<Default Extension=\"xml\" ContentType=\"application/xml\"/>" +
+                "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>" +
+                "</Types>");
+            WriteEntry(archive, "_rels/.rels",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/>" +
+                "</Relationships>");
+            WriteEntry(archive, "word/document.xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+                "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>" +
+                string.Concat(paragraphs.Select(text => $"<w:p><w:r><w:t>{SecurityElement.Escape(text)}</w:t></w:r></w:p>")) +
+                "</w:body></w:document>");
+        }
+
+        return stream.ToArray();
+    }
+
+    private static void WriteEntry(ZipArchive archive, string name, string content)
+    {
+        var entry = archive.CreateEntry(name, CompressionLevel.NoCompression);
+        using var writer = new StreamWriter(entry.Open());
+        writer.Write(content);
     }
 }

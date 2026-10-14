@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
 import {
   AgentRun, ApprovalRequest, AuditEvent, CandidateFact, CandidateProfile, Dashboard, EmailDraft, ExecutionReceipt,
-  GoogleOAuthSettings, GoogleStatus, InterviewPrepPlan, Job, JobApplication, JobPipelineResult, JobPostingDraft, ResumePreview, ResumeVersion, Settings
+GoogleOAuthSettings, GoogleStatus, InterviewPrepPlan, Job, JobApplication, JobDiscoveryResult, JobPipelineResult, JobPostingDraft, JobSearchPreferences, ResumePreview, ResumeVersion, Settings
 } from './models';
 
 @Injectable({ providedIn: 'root' })
@@ -31,6 +31,7 @@ export class ApiService {
   job(id: string) { return this.get<Job>(`/jobs/${id}`); }
   createJob(body: { title: string; company: string; location: string | null; source: string | null; url: string | null; description: string }) { return this.post<Job>('/jobs', body); }
   previewJobImport(url: string) { return this.post<JobPostingDraft>('/jobs/import-preview', { url }); }
+  discoverJobs(maxResults = 20) { return this.post<JobDiscoveryResult>('/jobs/discover', { maxResults }); }
   interviewPrep(jobId: string) { return this.get<InterviewPrepPlan>(`/jobs/${jobId}/interview-prep`); }
   exportData() { return firstValueFrom(this.http.get(`${environment.apiBaseUrl}/api/data/export`, { responseType: 'blob' })); }
   importData(file: File) { const form = new FormData(); form.append('file', file, file.name); return firstValueFrom(this.http.post<{ importedFiles: string[]; skippedEntries: string[]; backupDirectory: string }>(`${environment.apiBaseUrl}/api/data/import`, form)); }
@@ -68,6 +69,8 @@ export class ApiService {
 
   settings() { return this.get<Settings>('/settings'); }
   updateSettings(body: { mode: string | null; llmProvider: string | null; llmDisplayName: string | null; llmBaseUrl: string | null; llmApiKey: string | null; llmModel: string | null; masterResumePath: string | null }) { return this.put<unknown>('/settings', body); }
+  jobSearchPreferences() { return this.get<JobSearchPreferences>('/settings/job-search-preferences'); }
+  updateJobSearchPreferences(body: { preferredCountries: string[]; linkedInProfileUrl: string | null; preferredRoles: string[]; workMode: string | null; salaryExpectation: string | null; workAuthorization: string | null }) { return this.put<JobSearchPreferences>('/settings/job-search-preferences', body); }
   googleOAuthSettings() { return this.get<GoogleOAuthSettings>('/settings/google-oauth'); }
   updateGoogleOAuthSettings(body: { clientId: string; clientSecret: string; redirectUri: string }) { return this.put<GoogleOAuthSettings>('/settings/google-oauth', body); }
   uploadMasterResume(file: File) { const form = new FormData(); form.append('file', file, file.name); return firstValueFrom(this.http.post<{ masterResumePath: string; fileName: string; size: number }>(`${environment.apiBaseUrl}/api/settings/master-resume`, form)); }

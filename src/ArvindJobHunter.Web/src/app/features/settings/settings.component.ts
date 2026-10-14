@@ -12,7 +12,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatRadioModule } from '@angular/material/radio';
 import { ApiService } from '../../core/api.service';
-import { GoogleOAuthSettings, GoogleStatus, Settings } from '../../core/models';
+import { GoogleOAuthSettings, GoogleStatus, JobSearchPreferences, Settings } from '../../core/models';
 import { SettingsStateService } from '../../core/settings-state.service';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
@@ -113,6 +113,71 @@ import { NotifyService } from '../../shared/notify.service';
               <div class="row between">
                 <span class="muted small mono" matTooltip="Data directory">{{ s.dataDirectory }}</span>
                 <button mat-flat-button color="primary" type="submit" [disabled]="busy()">Save settings</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="card">
+            <div class="card-title"><mat-icon class="material-symbols-rounded">travel_explore</mat-icon>Job search preferences</div>
+            <p class="muted small">Choose the European countries and profile signals used during job discovery. Resume facts drive the matching; your LinkedIn URL is stored for auto-fill and future enrichment.</p>
+            <form class="stack" (ngSubmit)="saveJobSearchPreferences()">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Preferred countries</mat-label>
+                <mat-select name="preferredCountries" [(ngModel)]="jobSearchForm.preferredCountries" multiple>
+                  @for (country of countryOptions; track country) {
+                    <mat-option [value]="country">{{ country }}</mat-option>
+                  }
+                </mat-select>
+                <mat-hint>Select one or more target countries for job discovery.</mat-hint>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>LinkedIn profile URL</mat-label>
+                <input matInput name="linkedInProfileUrl" [(ngModel)]="jobSearchForm.linkedInProfileUrl" placeholder="https://www.linkedin.com/in/..." />
+                <mat-hint>Manual URL takes priority; if your resume contains LinkedIn, this field is prefilled automatically.</mat-hint>
+              </mat-form-field>
+
+              @if (preferences(); as p) {
+                <div class="alert info compact">
+                  <mat-icon class="material-symbols-rounded">person_search</mat-icon>
+                  <span>
+                    Effective LinkedIn URL: <span class="mono">{{ p.effectiveLinkedInProfileUrl || 'not available yet' }}</span>
+                    @if (p.resumeLinkedInProfileUrl) {
+                      <span class="muted small"> · Resume-detected: <span class="mono">{{ p.resumeLinkedInProfileUrl }}</span></span>
+                    }
+                  </span>
+                </div>
+              }
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Preferred roles</mat-label>
+                <textarea matInput name="preferredRolesText" [(ngModel)]="jobSearchForm.preferredRolesText" rows="3" placeholder="Backend Engineer, Senior .NET Developer, Platform Engineer"></textarea>
+                <mat-hint>Separate multiple roles with commas or new lines.</mat-hint>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Work mode</mat-label>
+                <mat-select name="workMode" [(ngModel)]="jobSearchForm.workMode">
+                  <mat-option value="">No preference</mat-option>
+                  @for (mode of workModeOptions; track mode) {
+                    <mat-option [value]="mode">{{ mode }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Salary expectation</mat-label>
+                <input matInput name="salaryExpectation" [(ngModel)]="jobSearchForm.salaryExpectation" placeholder="e.g. €85,000 or £75,000" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Work authorization</mat-label>
+                <textarea matInput name="workAuthorization" [(ngModel)]="jobSearchForm.workAuthorization" rows="2" placeholder="e.g. Requires visa sponsorship / Eligible to work across the EU"></textarea>
+              </mat-form-field>
+
+              <div class="row between">
+                <span class="muted small">These values are saved locally in the app data directory.</span>
+                <button mat-flat-button color="primary" type="submit" [disabled]="busy()">Save job preferences</button>
               </div>
             </form>
           </section>
@@ -255,6 +320,7 @@ export class SettingsComponent {
   private readonly settingsState = inject(SettingsStateService);
   private readonly notify = inject(NotifyService);
   readonly settings = signal<Settings | null>(null);
+  readonly preferences = signal<JobSearchPreferences | null>(null);
   readonly google = signal<GoogleStatus | null>(null);
   readonly llmHelp = signal(false);
   readonly googleHelp = signal(false);
@@ -262,7 +328,14 @@ export class SettingsComponent {
   readonly showGoogleSecret = signal(false);
   readonly error = signal('');
   readonly busy = signal(false);
+  readonly countryOptions = [
+    'United Kingdom', 'Germany', 'Netherlands', 'Ireland', 'France', 'Belgium', 'Luxembourg', 'Switzerland',
+    'Sweden', 'Norway', 'Denmark', 'Finland', 'Austria', 'Spain', 'Portugal', 'Italy', 'Poland',
+    'Czech Republic', 'Hungary', 'Romania', 'Other European Countries'
+  ];
+  readonly workModeOptions = ['Remote', 'Hybrid', 'Onsite', 'Flexible'];
   form = { mode: 'DEMO', llmProvider: 'Demo', llmDisplayName: 'Demo', llmBaseUrl: 'https://api.openai.com/v1/', llmApiKey: '', llmModel: 'gpt-4o-mini', masterResumePath: '' };
+  jobSearchForm = { preferredCountries: [] as string[], linkedInProfileUrl: '', preferredRolesText: '', workMode: '', salaryExpectation: '', workAuthorization: '' };
   googleForm: GoogleOAuthSettings = { clientId: '', clientSecret: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback', configured: false };
   importFile: File | null = null;
   resumeFile: File | null = null;
@@ -285,14 +358,23 @@ export class SettingsComponent {
 
   async load(): Promise<void> {
     try {
-      const [s, g, go] = await Promise.all([
+      const [s, p, g, go] = await Promise.all([
         this.api.settings(),
+        this.api.jobSearchPreferences(),
         this.api.googleStatus().catch(() => ({ configured: false, connected: false }) as GoogleStatus),
         this.api.googleOAuthSettings().catch(() => ({ clientId: '', clientSecret: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback', configured: false }) as GoogleOAuthSettings)
       ]);
-      this.settings.set(s); this.settingsState.update(s); this.google.set(g);
+      this.settings.set(s); this.settingsState.update(s); this.preferences.set(p); this.google.set(g);
       this.googleForm = { clientId: go.clientId, clientSecret: go.clientSecret, redirectUri: go.redirectUri, configured: go.configured };
       this.form = { mode: s.mode, llmProvider: s.llmProvider, llmDisplayName: s.llmDisplayName, llmBaseUrl: s.llmBaseUrl, llmApiKey: '', llmModel: s.llmModel, masterResumePath: s.masterResumePath };
+      this.jobSearchForm = {
+        preferredCountries: [...p.preferredCountries],
+        linkedInProfileUrl: p.linkedInProfileUrl ?? p.resumeLinkedInProfileUrl ?? '',
+        preferredRolesText: p.preferredRoles.join(', '),
+        workMode: p.workMode ?? '',
+        salaryExpectation: p.salaryExpectation ?? '',
+        workAuthorization: p.workAuthorization ?? ''
+      };
     } catch (e) { this.error.set(describeError(e)); }
   }
 
@@ -315,6 +397,23 @@ export class SettingsComponent {
     this.form = { ...this.form, llmDisplayName: preset.name, llmBaseUrl: preset.baseUrl, llmModel: preset.model, llmApiKey: '' };
   }
 
+  saveJobSearchPreferences() {
+    const preferredRoles = this.jobSearchForm.preferredRolesText
+      .split(/[\n,]/)
+      .map(value => value.trim())
+      .filter(Boolean);
+    return this.run(async () => {
+      await this.api.updateJobSearchPreferences({
+        preferredCountries: this.jobSearchForm.preferredCountries,
+        linkedInProfileUrl: this.jobSearchForm.linkedInProfileUrl.trim() || null,
+        preferredRoles,
+        workMode: this.jobSearchForm.workMode || null,
+        salaryExpectation: this.jobSearchForm.salaryExpectation.trim() || null,
+        workAuthorization: this.jobSearchForm.workAuthorization.trim() || null
+      });
+      this.notify.success('Job search preferences saved.');
+    });
+  }
   googleConfigured() { return !!this.googleForm.clientId.trim() && !!this.googleForm.clientSecret.trim() && !!this.googleForm.redirectUri.trim(); }
   saveGoogleOAuth() {
     return this.run(async () => {
