@@ -1,11 +1,24 @@
 using System.Text.Json;
 using ArvindJobHunter.Application.Abstractions;
+using ArvindJobHunter.Infrastructure.Persistence;
 using Microsoft.Extensions.Logging;
 
 namespace ArvindJobHunter.Infrastructure.Google;
 
-public sealed class JsonGoogleOAuthSettingsProvider(string appSettingsPath, GoogleOAuthConfiguration defaults, ILogger<JsonGoogleOAuthSettingsProvider>? logger = null) : IGoogleOAuthSettingsProvider
+public sealed class GoogleOAuthSettingsDocument
 {
+    public string ClientId { get; init; } = "";
+    public string RedirectUri { get; init; } = "http://localhost:5228/api/integrations/google/callback";
+}
+
+public sealed class JsonGoogleOAuthSettingsProvider(
+    IJsonStore<GoogleOAuthSettingsDocument> store,
+    ISecretStore secrets,
+    string appSettingsPath,
+    GoogleOAuthConfiguration defaults,
+    ILogger<JsonGoogleOAuthSettingsProvider>? logger = null) : IGoogleOAuthSettingsProvider
+{
+    private const string GoogleClientSecretName = "google.clientSecret";
     private readonly SemaphoreSlim gate = new(1, 1);
     private GoogleOAuthConfiguration? cached;
 
@@ -15,7 +28,7 @@ public sealed class JsonGoogleOAuthSettingsProvider(string appSettingsPath, Goog
         try
         {
             if (cached is not null && !string.IsNullOrWhiteSpace(cached.ClientId)) return cached;
-            cached = await LoadFromFileAsync(cancellationToken);
+            cached = await LoadAsync(cancellationToken);
             return cached;
         }
         finally { gate.Release(); }
@@ -26,60 +39,50 @@ public sealed class JsonGoogleOAuthSettingsProvider(string appSettingsPath, Goog
         await gate.WaitAsync(cancellationToken);
         try
         {
-            using var stream = File.Open(appSettingsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-            var root = document.RootElement.Clone();
-
-            var updatedJson = JsonSerializer.Serialize(BuildRoot(root, configuration), new JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(appSettingsPath, updatedJson + Environment.NewLine, cancellationToken);
-            // Clear cache and immediately load from file to ensure next read gets the saved values
-            cached = configuration;
-            logger?.LogWarning("Google OAuth client settings were written to {Path}. The client secret is stored there in plain text, so keep this file out of source control (or use user secrets)", appSettingsPath);
+            var secret = string.IsNullOrWhiteSpace(configuration.ClientSecret)
+                ? await secrets.GetAsync(GoogleClientSecretName, cancellationToken) ?? defaults.ClientSecret
+                : configuration.ClientSecret.Trim();
+            await secrets.SaveAsync(GoogleClientSecretName, secret, cancellationToken);
+            await store.SaveAsync(new GoogleOAuthSettingsDocument
+            {
+                ClientId = configuration.ClientId.Trim(),
+                RedirectUri = configuration.RedirectUri.Trim()
+            }, cancellationToken);
+            cached = configuration with { ClientSecret = secret };
+            logger?.LogInformation("Google OAuth client settings were saved to protected local storage.");
         }
         finally { gate.Release(); }
     }
 
-    private async Task<GoogleOAuthConfiguration> LoadFromFileAsync(CancellationToken cancellationToken)
+    private async Task<GoogleOAuthConfiguration> LoadAsync(CancellationToken cancellationToken)
     {
-        if (!File.Exists(appSettingsPath)) return defaults;
+        var secret = await secrets.GetAsync(GoogleClientSecretName, cancellationToken) ?? defaults.ClientSecret;
+        if (await store.ExistsAsync(cancellationToken))
+        {
+            var saved = await store.LoadAsync(cancellationToken);
+            return new GoogleOAuthConfiguration(
+                string.IsNullOrWhiteSpace(saved.ClientId) ? defaults.ClientId : saved.ClientId,
+                secret,
+                string.IsNullOrWhiteSpace(saved.RedirectUri) ? defaults.RedirectUri : saved.RedirectUri);
+        }
+
+        var migrated = await LoadLegacySettingsAsync(cancellationToken);
+        return new GoogleOAuthConfiguration(
+            migrated?.ClientId ?? defaults.ClientId,
+            string.IsNullOrWhiteSpace(secret) ? migrated?.ClientSecret ?? defaults.ClientSecret : secret,
+            migrated?.RedirectUri ?? defaults.RedirectUri);
+    }
+
+    private async Task<GoogleOAuthConfiguration?> LoadLegacySettingsAsync(CancellationToken cancellationToken)
+    {
+        if (!File.Exists(appSettingsPath)) return null;
         using var stream = File.Open(appSettingsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        if (!document.RootElement.TryGetProperty("Google", out var google)) return defaults;
+        if (!document.RootElement.TryGetProperty("Google", out var google)) return null;
 
         return new GoogleOAuthConfiguration(
             google.TryGetProperty("ClientId", out var clientId) ? clientId.GetString() ?? defaults.ClientId : defaults.ClientId,
             google.TryGetProperty("ClientSecret", out var clientSecret) ? clientSecret.GetString() ?? defaults.ClientSecret : defaults.ClientSecret,
             google.TryGetProperty("RedirectUri", out var redirectUri) ? redirectUri.GetString() ?? defaults.RedirectUri : defaults.RedirectUri);
     }
-
-    private static Dictionary<string, object?> BuildRoot(JsonElement root, GoogleOAuthConfiguration configuration)
-    {
-        var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var property in root.EnumerateObject())
-        {
-            result[property.Name] = property.NameEquals("Google")
-                ? new Dictionary<string, object?>
-                {
-                    ["ClientId"] = configuration.ClientId,
-                    ["ClientSecret"] = configuration.ClientSecret,
-                    ["RedirectUri"] = configuration.RedirectUri
-                }
-                : DeserializeElement(property.Value);
-        }
-
-        if (!result.ContainsKey("Google"))
-        {
-            result["Google"] = new Dictionary<string, object?>
-            {
-                ["ClientId"] = configuration.ClientId,
-                ["ClientSecret"] = configuration.ClientSecret,
-                ["RedirectUri"] = configuration.RedirectUri
-            };
-        }
-
-        return result;
-    }
-
-    private static object? DeserializeElement(JsonElement element)
-        => JsonSerializer.Deserialize<object?>(element.GetRawText());
 }

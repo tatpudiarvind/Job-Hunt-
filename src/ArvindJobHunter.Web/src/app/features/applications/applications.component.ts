@@ -12,7 +12,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
 import { ApiService } from '../../core/api.service';
-import { Job, JobApplication } from '../../core/models';
+import { ApplicationReview, Job, JobApplication } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
@@ -64,7 +64,12 @@ import { NotifyService } from '../../shared/notify.service';
                     </mat-form-field>
                     <button mat-flat-button color="primary" [disabled]="busy() || !nextStatus[app.id]" (click)="transition(app)">Update</button>
                   </div>
-                  <a mat-button [routerLink]="['/jobs', app.jobId]">Open job<mat-icon iconPositionEnd class="material-symbols-rounded">arrow_forward</mat-icon></a>
+                  <div class="row wrap">
+                    <a mat-button [routerLink]="['/jobs', app.jobId]">Open job<mat-icon iconPositionEnd class="material-symbols-rounded">arrow_forward</mat-icon></a>
+                    @if (app.resumeVersionId) {
+                      <button mat-stroked-button type="button" [disabled]="busy()" (click)="previewResume(app.resumeVersionId)"><mat-icon class="material-symbols-rounded">preview</mat-icon>Preview resume</button>
+                    }
+                  </div>
                 </div>
                 <div class="stack">
                   <h4>Follow-up reminder</h4>
@@ -83,6 +88,26 @@ import { NotifyService } from '../../shared/notify.service';
                   </div>
                   @if (app.followUpNote) { <span class="muted small">Current note: {{ app.followUpNote }}</span> }
                 </div>
+              </div>
+              <h4 class="mt">Review package</h4>
+              <div class="stack">
+                @if (reviews[app.id]; as r) {
+                  @if (r.job.sponsorship; as s) {
+                    <span class="small">Sponsorship: <strong>{{ s.status }}</strong>@if (s.matchedPhrase) { ("{{ s.matchedPhrase }}") } · source {{ s.source }} · checked {{ s.checkedAt | date:'mediumDate' }}</span>
+                  } @else { <span class="small muted">Sponsorship: UNKNOWN (not checked)</span> }
+                  @if (r.job.recruiter; as c) {
+                    <span class="small">Recruiter: <strong>{{ c.status }}</strong>@if (c.email) { · {{ c.email }} } @if (c.source) { · from {{ c.source }} }</span>
+                  } @else { <span class="small muted">Recruiter contact: not recorded</span> }
+                  @for (issue of r.issues; track issue) { <span class="small overdue">⚠ {{ issue }}</span> }
+                  @if (r.latestPackage; as p) {
+                    <span class="small">Package v{{ p.version }} · {{ p.packageHash.slice(0, 12) }} · {{ r.packageIsCurrent ? 'current' : 'out of date — content changed' }}</span>
+                  } @else { <span class="small muted">No package frozen yet.</span> }
+                  <div class="row">
+                    <button mat-flat-button color="primary" [disabled]="busy() || r.issues.length > 0 || r.packageIsCurrent" (click)="freeze(app)"><mat-icon class="material-symbols-rounded">inventory_2</mat-icon>Freeze package</button>
+                  </div>
+                } @else {
+                  <button mat-stroked-button [disabled]="busy()" (click)="review(app)"><mat-icon class="material-symbols-rounded">fact_check</mat-icon>Review before submitting</button>
+                }
               </div>
               <h4 class="mt">History</h4>
               <div class="timeline">
@@ -125,6 +150,7 @@ export class ApplicationsComponent {
   nextStatus: Record<string, string> = {};
   followUpAt: Record<string, string> = {};
   followUpNote: Record<string, string> = {};
+  reviews: Record<string, ApplicationReview> = {};
   private jobs: Job[] = [];
 
   constructor() { void this.load(); }
@@ -158,14 +184,27 @@ export class ApplicationsComponent {
   clearFollowUp(app: JobApplication): Promise<void> {
     return this.run(async () => { await this.api.clearFollowUp(app.id); delete this.followUpAt[app.id]; delete this.followUpNote[app.id]; this.notify.info('Reminder cleared.'); });
   }
+  review(app: JobApplication): Promise<void> {
+    return this.run(async () => { this.reviews[app.id] = await this.api.applicationReview(app.id); }, false);
+  }
+  freeze(app: JobApplication): Promise<void> {
+    return this.run(async () => {
+      const p = await this.api.createApplicationPackage(app.id);
+      this.reviews[app.id] = await this.api.applicationReview(app.id);
+      this.notify.success(`Package v${p.version} frozen.`);
+    }, false);
+  }
+  previewResume(resumeVersionId: string): Promise<void> {
+    return this.run(async () => { this.notify.previewResume(await this.api.resumePreview(resumeVersionId)); }, false);
+  }
 
   private toLocalInput(iso: string): string {
     const d = new Date(iso); const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
-  private async run(action: () => Promise<void>): Promise<void> {
+  private async run(action: () => Promise<void>, reload = true): Promise<void> {
     this.busy.set(true); this.error.set('');
-    try { await action(); await this.load(); } catch (e) { this.error.set(describeError(e)); } finally { this.busy.set(false); }
+    try { await action(); if (reload) await this.load(); } catch (e) { this.error.set(describeError(e)); } finally { this.busy.set(false); }
   }
 }

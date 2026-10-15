@@ -4,7 +4,7 @@ namespace ArvindJobHunter.Contracts.Api;
 
 public sealed record AuthRequest([property: Required] string Username, [property: Required] string Password);
 
-public sealed record ResetPasswordRequest([property: Required] string Username, [property: Required] string NewPassword);
+public sealed record ResetPasswordRequest([property: Required] string Username, [property: Required] string CurrentPassword, [property: Required] string NewPassword);
 
 public sealed record AuthStatusResponse(bool Configured, bool Authenticated);
 
@@ -44,7 +44,7 @@ public sealed record UpdateEmailDraftRequest(
 
 public sealed record SettingsResponse(string Mode, string LlmProvider, string LlmDisplayName, string LlmBaseUrl, bool LlmConfigured, string LlmModel, bool OpenAiConfigured, string MasterResumePath, bool MasterResumeExists, string DataDirectory);
 
-public sealed record GoogleOAuthSettingsResponse(string ClientId, string ClientSecret, string RedirectUri, bool Configured);
+public sealed record GoogleOAuthSettingsResponse(string ClientId, string RedirectUri, bool ClientSecretConfigured, bool Configured);
 
 public sealed record JobSearchPreferencesResponse(
     IReadOnlyList<string> PreferredCountries,
@@ -68,8 +68,12 @@ public sealed record UpdateJobSearchPreferencesRequest(
 
 public sealed record UpdateGoogleOAuthSettingsRequest(
     [property: Required] string ClientId,
-    [property: Required] string ClientSecret,
+    string? ClientSecret,
     [property: Required] string RedirectUri);
+
+public sealed record ResumePreviewParagraph(int Index, string Text, string? Style);
+
+public sealed record ResumePreviewResponse(Guid Id, Guid JobId, string Status, IReadOnlyList<ResumePreviewParagraph> Paragraphs, DateTimeOffset GeneratedAt);
 
 /// <summary>An error or warning reported by the browser so it lands in the same Markdown log as server events.</summary>
 public sealed record ClientLogRequest(

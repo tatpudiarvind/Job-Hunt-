@@ -23,6 +23,7 @@ public sealed class JobDiscoveryServiceTests
 
         await facts.UpsertAsync(CandidateFact.Create("SKILL", "C#", "C#", "seed").SetVerification(true), CancellationToken.None);
         await facts.UpsertAsync(CandidateFact.Create("SKILL", "Azure", "Azure", "seed").SetVerification(true), CancellationToken.None);
+        await facts.UpsertAsync(CandidateFact.Create("SKILL", ".NET", ".NET", "seed").SetVerification(true), CancellationToken.None);
         await facts.UpsertAsync(CandidateFact.Create("PREFERENCE", "Remote", "Remote", "seed").SetVerification(true), CancellationToken.None);
 
         var source = new FakeSource(
@@ -48,6 +49,16 @@ public sealed class JobDiscoveryServiceTests
         Assert.Equal("Contoso DE", imported.Company);
         Assert.Contains("Germany", imported.Location);
         Assert.Contains(auditStore.Events, e => e.Action == "JOB_DISCOVERY_COMPLETED");
+    }
+
+    [Theory]
+    [InlineData("C#, .NET, Azure and SQL Server. Visa sponsorship available.", 100)]
+    [InlineData("C#, .NET, Azure, Kafka and Kubernetes. Visa sponsorship available.", 60)]
+    [InlineData("Python and Django only.", 0)]
+    public void SkillCoveragePercent_MeasuresShareOfRequiredSkillsOnResume(string description, int expected)
+    {
+        var posting = new DiscoveredJobPosting("1", "Backend Engineer", "Contoso", "Berlin, Germany", "Fake", "https://example.com/1", description, []);
+        Assert.Equal(expected, JobDiscoveryService.SkillCoveragePercent(posting, ["C#", ".NET", "Azure", "SQL Server"]));
     }
 
     private sealed class FakeSource(IReadOnlyList<DiscoveredJobPosting> jobs) : IJobDiscoverySource

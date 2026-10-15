@@ -16,11 +16,12 @@ public static class DependencyInjection
         services.AddScoped<JobDiscoveryService>();
         services.AddSingleton<InterviewPrepService>();
         services.AddScoped<ApplicationService>();
+        services.AddScoped<ApplicationPackageService>();
         services.AddScoped<ResumeService>();
         services.AddScoped<ResumeAnalysisService>();
         services.AddScoped<EmailDraftService>();
         services.AddScoped<AgentRunService>();
-        services.AddScoped<ExecuteApprovedActionCommand>();
+        services.AddScoped(sp => ActivatorUtilities.CreateInstance<ExecuteApprovedActionCommand>(sp, sp.GetRequiredService<IRepository<ArvindJobHunter.Domain.Entities.ApplicationPackage>>()));
         services.AddSingleton<ILocalAuthenticationService, LocalAuthenticationService>();
         services.AddSingleton<IExternalActionGuard, ExternalActionGuard>();
         return services;

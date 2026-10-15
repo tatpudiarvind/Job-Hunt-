@@ -27,8 +27,8 @@ export class AuthService {
     await firstValueFrom(this.http.post<void>(`${environment.apiBaseUrl}/api/auth/signup`, { username, password }));
   }
 
-  async resetPassword(username: string, newPassword: string): Promise<void> {
-    await firstValueFrom(this.http.post<void>(`${environment.apiBaseUrl}/api/auth/reset-password`, { username, newPassword }));
+  async resetPassword(username: string, currentPassword: string, newPassword: string): Promise<void> {
+    await firstValueFrom(this.http.post<void>(`${environment.apiBaseUrl}/api/auth/reset-password`, { username, currentPassword, newPassword }));
   }
 
   async login(username: string, password: string): Promise<void> {

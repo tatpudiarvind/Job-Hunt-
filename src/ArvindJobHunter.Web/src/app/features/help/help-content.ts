@@ -27,9 +27,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
     id: 'google-oauth-config',
     category: 'Google OAuth',
     title: 'How do I configure Google OAuth in the application?',
-    summary: 'Enter the Google Client ID, Client Secret, and Redirect URI from Settings and save them to appsettings.json through the backend.',
-    keywords: ['google', 'oauth', 'client id', 'client secret', 'redirect uri', 'settings', 'appsettings'],
-    answer: 'Open Settings and go to the Google / Gmail section. Enter the Google Client ID, Client Secret, and Redirect URI, then save the settings. The backend writes these values into the API appsettings.json file through the existing settings endpoint. After saving, use Connect Google to complete the Google consent flow.',
+    summary: 'Enter the Google Client ID, Client Secret, and Redirect URI from Settings and save them through the backend into protected local storage.',
+    keywords: ['google', 'oauth', 'client id', 'client secret', 'redirect uri', 'settings', 'protected storage'],
+    answer: 'Open Settings and go to the Google / Gmail section. Enter the Google Client ID, Client Secret, and Redirect URI, then save the settings. The backend stores the client secret in protected local storage and keeps only non-secret Google settings in the local data directory. After saving, use Connect Google to complete the Google consent flow.',
     references: [
       { title: 'Google OAuth Configuration Guide', path: 'docs/GOOGLE_OAUTH_CONFIGURATION_GUIDE.md' },
       { title: 'Google OAuth User Flow', path: 'docs/GOOGLE_OAUTH_USER_FLOW.md' }
@@ -53,7 +53,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: 'How do I fix invalid_client errors?',
     summary: 'Check that the Client ID and Client Secret are valid, matched, and loaded by the backend.',
     keywords: ['invalid_client', '401', 'client id', 'client secret', 'oauth'],
-    answer: 'An invalid_client error usually means Google does not accept the OAuth client configuration. Confirm the Client ID and Client Secret belong to the same Google OAuth client, ensure they were saved correctly in the application, and restart the backend if configuration was changed. If necessary, regenerate the client secret in Google Cloud Console and save the updated value again.',
+    answer: 'An invalid_client error usually means Google does not accept the OAuth client configuration. Confirm the Client ID and Client Secret belong to the same Google OAuth client, ensure they were saved correctly in the application, and if necessary regenerate the client secret in Google Cloud Console and save the updated value again. Restarting the backend should not normally be required after saving settings.',
     references: [
       { title: 'Google OAuth 401 Fix', path: 'docs/GMAIL_OAUTH_401_FIX.md' },
       { title: 'Google OAuth Configuration Guide', path: 'docs/GOOGLE_OAUTH_CONFIGURATION_GUIDE.md' }

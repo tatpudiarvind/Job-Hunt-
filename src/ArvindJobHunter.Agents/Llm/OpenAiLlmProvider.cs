@@ -69,8 +69,13 @@ public sealed class OpenAiLlmProvider(HttpClient httpClient, IRuntimeSettingsPro
         return new LlmResponse(content, resolved.DisplayName, payload.Model ?? resolved.Model, payload.Usage?.PromptTokens, payload.Usage?.CompletionTokens);
     }
 
+    /// <summary>Provider values served by this OpenAI-compatible adapter (Gemini exposes an OpenAI-compatible endpoint).</summary>
+    public static bool Handles(string? provider) =>
+        string.Equals(provider, "OpenAI", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(provider, "Gemini", StringComparison.OrdinalIgnoreCase);
+
     public bool CanResolve(RuntimeSettings settings) =>
-        string.Equals(settings.LlmProvider, Name, StringComparison.OrdinalIgnoreCase)
+        Handles(settings.LlmProvider)
         && !string.IsNullOrWhiteSpace(Resolve(settings).ApiKey);
 
     public string DisplayName(RuntimeSettings settings) => Resolve(settings).DisplayName;

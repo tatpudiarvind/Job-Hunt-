@@ -14,42 +14,69 @@ public sealed class JobDiscoveryService(
     AuditService audit,
     ILogger<JobDiscoveryService> logger)
 {
+    public const int MinimumSkillMatchPercent = 60;
+    private const int MinimumRequiredSkillsDetected = 3;
+
     private static readonly string[] DefaultCountries =
     [
         "United Kingdom", "Germany", "Netherlands", "Ireland", "France", "Belgium", "Luxembourg", "Switzerland",
-        "Sweden", "Norway", "Denmark", "Finland", "Austria", "Spain", "Portugal", "Italy", "Poland",
-        "Czech Republic", "Hungary", "Romania"
+        "Sweden", "Norway", "Denmark", "Finland", "Iceland", "Austria", "Spain", "Portugal", "Italy", "Malta", "Greece", "Cyprus",
+        "Poland", "Czech Republic", "Slovakia", "Hungary", "Romania", "Bulgaria", "Croatia", "Slovenia", "Serbia",
+        "Estonia", "Latvia", "Lithuania", "Other European Countries"
     ];
 
     private static readonly Dictionary<string, string[]> CountryKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["United Kingdom"] = ["united kingdom", "uk", "england", "scotland", "wales", "northern ireland", "london", "manchester", "birmingham", "bristol", "leeds"],
-        ["Germany"] = ["germany", "berlin", "munich", "hamburg", "frankfurt"],
-        ["Netherlands"] = ["netherlands", "holland", "amsterdam", "rotterdam", "utrecht", "eindhoven"],
-        ["Ireland"] = ["ireland", "dublin", "cork", "galway"],
-        ["France"] = ["france", "paris", "lyon", "toulouse"],
-        ["Belgium"] = ["belgium", "brussels", "antwerp", "ghent"],
+        ["United Kingdom"] = ["united kingdom", "uk", "england", "scotland", "wales", "northern ireland", "london", "manchester", "birmingham", "bristol", "leeds", "edinburgh", "glasgow", "cambridge", "oxford"],
+        ["Germany"] = ["germany", "deutschland", "berlin", "munich", "münchen", "hamburg", "frankfurt", "cologne", "köln", "stuttgart", "düsseldorf", "dusseldorf", "leipzig", "dresden", "karlsruhe", "nuremberg"],
+        ["Netherlands"] = ["netherlands", "holland", "amsterdam", "rotterdam", "utrecht", "eindhoven", "the hague", "den haag"],
+        ["Ireland"] = ["ireland", "dublin", "cork", "galway", "limerick"],
+        ["France"] = ["france", "paris", "lyon", "toulouse", "nantes", "lille", "bordeaux", "marseille"],
+        ["Belgium"] = ["belgium", "brussels", "antwerp", "ghent", "leuven"],
         ["Luxembourg"] = ["luxembourg"],
-        ["Switzerland"] = ["switzerland", "zurich", "geneva", "basel", "bern"],
-        ["Sweden"] = ["sweden", "stockholm", "gothenburg", "malmo"],
+        ["Switzerland"] = ["switzerland", "schweiz", "zurich", "zürich", "geneva", "basel", "bern", "lausanne"],
+        ["Sweden"] = ["sweden", "stockholm", "gothenburg", "malmo", "malmö"],
         ["Norway"] = ["norway", "oslo", "bergen", "trondheim"],
         ["Denmark"] = ["denmark", "copenhagen", "aarhus"],
         ["Finland"] = ["finland", "helsinki", "espoo", "tampere"],
-        ["Austria"] = ["austria", "vienna", "linz", "graz"],
-        ["Spain"] = ["spain", "madrid", "barcelona", "valencia"],
-        ["Portugal"] = ["portugal", "lisbon", "porto", "braga"],
-        ["Italy"] = ["italy", "milan", "rome", "turin"],
-        ["Poland"] = ["poland", "warsaw", "krakow", "wroclaw", "gdansk"],
+        ["Iceland"] = ["iceland", "reykjavik"],
+        ["Austria"] = ["austria", "vienna", "wien", "linz", "graz"],
+        ["Spain"] = ["spain", "madrid", "barcelona", "valencia", "malaga", "málaga", "seville"],
+        ["Portugal"] = ["portugal", "lisbon", "lisboa", "porto", "braga"],
+        ["Italy"] = ["italy", "milan", "milano", "rome", "turin", "bologna"],
+        ["Malta"] = ["malta", "valletta"],
+        ["Greece"] = ["greece", "athens", "thessaloniki"],
+        ["Cyprus"] = ["cyprus", "limassol", "nicosia"],
+        ["Poland"] = ["poland", "warsaw", "krakow", "kraków", "wroclaw", "wrocław", "gdansk", "poznan"],
         ["Czech Republic"] = ["czech republic", "czechia", "prague", "brno"],
+        ["Slovakia"] = ["slovakia", "bratislava", "kosice"],
         ["Hungary"] = ["hungary", "budapest"],
-        ["Romania"] = ["romania", "bucharest", "cluj", "timisoara"],
-        ["Other European Countries"] = ["europe", "european union", "eu", "eea"]
+        ["Romania"] = ["romania", "bucharest", "cluj", "timisoara", "iasi"],
+        ["Bulgaria"] = ["bulgaria", "sofia", "plovdiv"],
+        ["Croatia"] = ["croatia", "zagreb", "split"],
+        ["Slovenia"] = ["slovenia", "ljubljana"],
+        ["Serbia"] = ["serbia", "belgrade", "novi sad"],
+        ["Estonia"] = ["estonia", "tallinn", "tartu"],
+        ["Latvia"] = ["latvia", "riga"],
+        ["Lithuania"] = ["lithuania", "vilnius", "kaunas"],
+        ["Other European Countries"] = ["europe", "european union", "emea", "eea", "remote - europe", "remote europe"]
     };
+
+    // Technical terms used to detect what a posting actually requires, so skill coverage can be measured.
+    private static readonly string[] TechVocabulary =
+    [
+        "C#", ".NET", ".NET Core", "ASP.NET", "ASP.NET Core", "Entity Framework", "Blazor", "WPF", "Java", "Spring Boot", "Kotlin", "Scala",
+        "Python", "Django", "Flask", "FastAPI", "Golang", "Rust", "C++", "Ruby", "Ruby on Rails", "PHP", "Laravel", "Elixir",
+        "JavaScript", "TypeScript", "Node.js", "React", "Angular", "Vue", "Next.js", "SwiftUI", "Objective-C", "Android", "iOS", "Flutter",
+        "SQL", "SQL Server", "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "Cassandra", "DynamoDB", "Snowflake",
+        "Kafka", "RabbitMQ", "Azure", "AWS", "GCP", "Docker", "Kubernetes", "Terraform", "Microservices", "REST API", "RESTful", "gRPC", "GraphQL",
+        "CI/CD", "Machine Learning", "LLM", "RAG", "OpenAI", "Spark", "Hadoop", "Airflow", "dbt", "Linux"
+    ];
 
     private static readonly string[] SponsorshipKeywords =
     [
         "visa sponsorship", "visa-sponsored", "sponsorship available", "sponsorship provided", "will sponsor", "can sponsor",
-        "skilled worker visa", "work permit sponsorship", "relocation support", "relocation package", "immigration support"
+        "skilled worker visa", "work permit sponsorship", "blue card", "eu blue card", "visa support", "visa assistance", "relocation support", "relocation package", "relocation assistance", "immigration support"
     ];
 
     private static readonly string[] SponsorshipExclusionKeywords =
@@ -85,15 +112,22 @@ public sealed class JobDiscoveryService(
             }
         }
 
-        var ranked = fetched
+        var rankedAll = fetched
             .Where(posting => MatchesTargetCountries(posting, request.TargetRegions))
             .Where(posting => !request.RequireVisaSponsorship || HasVisaSponsorship(posting))
             .Select(posting => Rank(posting, request))
-            .Where(r => r.Score > 0)
-            .OrderByDescending(r => r.Score)
+            .ToList();
+        var ranked = rankedAll
+            .Where(r => r.Score > 0 && SkillCoveragePercent(r.Posting, request.Skills) >= MinimumSkillMatchPercent)
+            .OrderByDescending(r => SkillCoveragePercent(r.Posting, request.Skills))
+            .ThenByDescending(r => r.Score)
             .ThenBy(r => r.Posting.Company, StringComparer.OrdinalIgnoreCase)
             .Take(request.MaxResults)
             .ToList();
+        if (rankedAll.Count > ranked.Count)
+        {
+            notes.Add($"{rankedAll.Count - ranked.Count} sponsored European posting(s) were skipped because less than {MinimumSkillMatchPercent}% of their required skills match your resume.");
+        }
 
         var existing = await jobs.ListAsync(cancellationToken);
         var imported = 0;
@@ -108,6 +142,8 @@ public sealed class JobDiscoveryService(
             if (duplicate is null)
             {
                 var created = await jobs.CreateAsync(posting.Title, posting.Company, posting.Location, posting.Source, posting.Url, posting.Description, userId, cancellationToken);
+                created = created with { Sponsorship = EvaluateSponsorship(posting.Title, posting.Description, posting.Location, posting.Source) };
+                await jobs.SaveAsync(created, cancellationToken);
                 persisted.Add(created);
                 imported++;
                 existing = [.. existing, created];
@@ -124,6 +160,7 @@ public sealed class JobDiscoveryService(
                     Source = posting.Source,
                     Url = posting.Url,
                     Description = posting.Description,
+                    Sponsorship = EvaluateSponsorship(posting.Title, posting.Description, posting.Location, posting.Source),
                     UpdatedAt = DateTimeOffset.UtcNow
                 };
                 await jobs.SaveAsync(refreshed, cancellationToken);
@@ -190,6 +227,7 @@ public sealed class JobDiscoveryService(
         var workModeScore = WorkModeScore(posting, request.WorkMode);
         var score = Math.Min(100, matchedSkills.Count * 12 + roleScore + PreferenceScore(posting, request.Preferences) + SponsorshipScore(posting) + locationScore + workModeScore);
         var reasons = new List<string>();
+        reasons.Add($"Skill match: {SkillCoveragePercent(posting, request.Skills)}% of the posting's required skills are on your resume");
         if (matchedSkills.Count > 0) reasons.Add($"Matched skills: {string.Join(", ", matchedSkills.Take(6))}");
         if (roleScore > 0) reasons.Add($"Role alignment with {string.Join(" / ", request.PreferredRoles.DefaultIfEmpty(request.CurrentRole ?? "current role"))}");
         if (locationScore > 0) reasons.Add($"Country matches {string.Join(", ", request.TargetRegions.Take(3))}{(request.TargetRegions.Count > 3 ? "..." : string.Empty)}");
@@ -252,11 +290,17 @@ public sealed class JobDiscoveryService(
     private static IEnumerable<string> CountryKeywordsFor(string country) =>
         CountryKeywords.TryGetValue(country, out var values) ? values : [country];
 
-    private static bool HasVisaSponsorship(DiscoveredJobPosting posting)
+    private static bool HasVisaSponsorship(DiscoveredJobPosting posting) =>
+        EvaluateSponsorship(posting.Title, posting.Description, posting.Location, posting.Source).Status == SponsorshipStatus.MENTIONED;
+
+    public static SponsorshipEvidence EvaluateSponsorship(string title, string description, string location, string source)
     {
-        var haystack = $"{posting.Title}\n{posting.Description}\n{posting.Location}";
-        return !SponsorshipExclusionKeywords.Any(keyword => ContainsPhrase(haystack, keyword))
-            && SponsorshipKeywords.Any(keyword => ContainsPhrase(haystack, keyword));
+        var haystack = $"{title}\n{description}\n{location}";
+        var now = DateTimeOffset.UtcNow;
+        var exclusion = SponsorshipExclusionKeywords.FirstOrDefault(keyword => ContainsPhrase(haystack, keyword));
+        if (exclusion is not null) return new SponsorshipEvidence(SponsorshipStatus.EXCLUDED, exclusion, source, now);
+        var mention = SponsorshipKeywords.FirstOrDefault(keyword => ContainsPhrase(haystack, keyword));
+        return new SponsorshipEvidence(mention is null ? SponsorshipStatus.UNKNOWN : SponsorshipStatus.MENTIONED, mention, source, now);
     }
 
     private static bool SamePosting(Job job, DiscoveredJobPosting posting)
@@ -278,7 +322,30 @@ public sealed class JobDiscoveryService(
         || !string.Equals(job.Url, posting.Url, StringComparison.OrdinalIgnoreCase);
 
     private static bool ContainsPhrase(string text, string phrase) =>
-        text.Contains(phrase, StringComparison.OrdinalIgnoreCase);
+        !string.IsNullOrWhiteSpace(phrase)
+        && Regex.IsMatch(text, $@"(?<![\p{{L}}\p{{N}}]){Regex.Escape(phrase.Trim())}(?![\p{{L}}\p{{N}}+#])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>Share (0-100) of the technical skills a posting asks for that also appear among the candidate's verified resume skills.</summary>
+    public static int SkillCoveragePercent(DiscoveredJobPosting posting, IReadOnlyList<string> candidateSkills)
+    {
+        if (candidateSkills.Count == 0) return 0;
+        var haystack = $"{posting.Title}\n{posting.Description}\n{string.Join(' ', posting.Tags)}";
+        var required = TechVocabulary
+            .Concat(candidateSkills)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(term => ContainsPhrase(haystack, term))
+            .ToList();
+        // Collapse terms that are part of a longer detected term (".NET" inside "ASP.NET Core") so they are not double counted.
+        required = required
+            .Where(term => !required.Any(other => other.Length > term.Length && other.Contains(term, StringComparison.OrdinalIgnoreCase) && !candidateSkills.Contains(term, StringComparer.OrdinalIgnoreCase)))
+            .ToList();
+        if (required.Count < MinimumRequiredSkillsDetected) return 0;
+        var matched = required.Count(term => candidateSkills.Any(skill =>
+            string.Equals(skill, term, StringComparison.OrdinalIgnoreCase)
+            || skill.Contains(term, StringComparison.OrdinalIgnoreCase)
+            || term.Contains(skill, StringComparison.OrdinalIgnoreCase)));
+        return (int)Math.Round(matched * 100.0 / required.Count);
+    }
 
     private static HashSet<string> Tokenize(string value) =>
         Regex.Split(value.ToLowerInvariant(), "[^a-z0-9+#.]+")

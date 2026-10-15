@@ -77,7 +77,10 @@ import { NotifyService } from '../../shared/notify.service';
                   <span class="muted small">{{ r.executedAt | date:'medium' }}</span>
                 </div>
                 @if (r.message) { <span class="small">{{ r.message }}</span> }
-                @if (r.externalReference) { <span class="muted small mono">ref {{ r.externalReference }}</span> }
+                <div class="row wrap small">
+                  @if (r.websiteUrl) { <a [href]="r.websiteUrl" target="_blank" rel="noopener noreferrer external">Open application website<mat-icon inline class="material-symbols-rounded">open_in_new</mat-icon></a> }
+                  @if (r.externalReference) { <span class="muted small mono">ref {{ r.externalReference }}</span> }
+                </div>
               </div>
             } @empty { <div class="empty"><mat-icon class="material-symbols-rounded">receipt_long</mat-icon>No executions yet.</div> }
           </section>

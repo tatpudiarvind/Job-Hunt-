@@ -3,6 +3,8 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
 import { firstValueFrom } from 'rxjs';
 import { ConfirmDialogComponent, ConfirmDialogData } from './confirm-dialog.component';
+import { ResumePreview } from '../core/models';
+import { ResumePreviewDialogComponent } from './resume-preview-dialog.component';
 
 /** Centralized toasts and confirmation dialogs so pages never call window.confirm/prompt. */
 @Injectable({ providedIn: 'root' })
@@ -23,5 +25,9 @@ export class NotifyService {
   async prompt(data: ConfirmDialogData & { promptLabel: string }): Promise<string | null> {
     const result = await firstValueFrom(this.dialog.open(ConfirmDialogComponent, { data, width: '440px', autoFocus: false }).afterClosed());
     return typeof result === 'string' ? result : null;
+  }
+
+  previewResume(data: ResumePreview): void {
+    this.dialog.open(ResumePreviewDialogComponent, { data, width: '960px', maxWidth: '96vw', autoFocus: false });
   }
 }

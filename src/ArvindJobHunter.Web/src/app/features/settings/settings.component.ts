@@ -69,9 +69,10 @@ import { NotifyService } from '../../shared/notify.service';
 
               <mat-form-field appearance="outline" subscriptSizing="dynamic">
                 <mat-label>LLM provider</mat-label>
-                <mat-select name="llmProvider" [(ngModel)]="form.llmProvider">
+                <mat-select name="llmProvider" [(ngModel)]="form.llmProvider" (selectionChange)="onProviderChange($event.value)">
                   <mat-option value="Demo">Demo (offline, deterministic)</mat-option>
                   <mat-option value="OpenAI">OpenAI-compatible API</mat-option>
+                  <mat-option value="Gemini">Google Gemini</mat-option>
                 </mat-select>
               </mat-form-field>
 
@@ -81,11 +82,11 @@ import { NotifyService } from '../../shared/notify.service';
                 <mat-hint>Friendly name shown in the header and activity views.</mat-hint>
               </mat-form-field>
 
-              @if (form.llmProvider === 'OpenAI') {
+              @if (form.llmProvider === 'OpenAI' || form.llmProvider === 'Gemini') {
                 <mat-form-field appearance="outline" subscriptSizing="dynamic">
                   <mat-label>Base URL</mat-label>
                   <input matInput name="llmBaseUrl" [(ngModel)]="form.llmBaseUrl" placeholder="https://api.openai.com/v1/" required />
-                  <mat-hint>Must point to an OpenAI-compatible API root.</mat-hint>
+                  <mat-hint>{{ form.llmProvider === 'Gemini' ? 'Gemini OpenAI-compatible endpoint. Create a key at aistudio.google.com/apikey.' : 'Must point to an OpenAI-compatible API root.' }}</mat-hint>
                 </mat-form-field>
 
                 <mat-form-field appearance="outline" subscriptSizing="dynamic">
@@ -100,7 +101,7 @@ import { NotifyService } from '../../shared/notify.service';
                 <mat-form-field appearance="outline" subscriptSizing="dynamic">
                   <mat-label>Model</mat-label>
                   <input matInput name="llmModel" [(ngModel)]="form.llmModel" placeholder="gpt-4o-mini" required />
-                  <mat-hint>Example: gpt-4o-mini, gpt-4.1-mini, llama3.1:8b, mistral-small.</mat-hint>
+                  <mat-hint>{{ form.llmProvider === 'Gemini' ? 'Example: gemini-3.5-flash-lite, gemini-3.5-flash.' : 'Example: gpt-4o-mini, gpt-4.1-mini, llama3.1:8b, mistral-small.' }}</mat-hint>
                 </mat-form-field>
               } @else {
                 <div class="alert info compact">
@@ -231,7 +232,7 @@ import { NotifyService } from '../../shared/notify.service';
                 <div class="alert info help-card">
                   <mat-icon class="material-symbols-rounded">help</mat-icon>
                   <span>
-                    First save the Google OAuth Client ID, Client Secret, and Redirect URI. The application writes them to the API <span class="mono">appsettings.json</span> file. After that, click <b>Connect Google</b> to authorize Gmail access through Google.
+                    First save the Google OAuth Client ID, Client Secret, and Redirect URI. The application stores the client secret in protected local storage and keeps only non-secret Google settings in the local data directory. After that, click <b>Connect Google</b> to authorize Gmail access through Google.
                   </span>
                 </div>
               }
@@ -242,17 +243,18 @@ import { NotifyService } from '../../shared/notify.service';
                 </mat-form-field>
                 <mat-form-field appearance="outline" subscriptSizing="dynamic">
                   <mat-label>Google Client Secret</mat-label>
-                  <input matInput name="googleClientSecret" [type]="showGoogleSecret() ? 'text' : 'password'" [(ngModel)]="googleForm.clientSecret" placeholder="YOUR_GOOGLE_OAUTH_CLIENT_SECRET" required />
+                  <input matInput name="googleClientSecret" [type]="showGoogleSecret() ? 'text' : 'password'" [(ngModel)]="googleForm.clientSecret" placeholder="YOUR_GOOGLE_OAUTH_CLIENT_SECRET" />
                   <button mat-icon-button matSuffix type="button" (click)="showGoogleSecret.set(!showGoogleSecret())" [attr.aria-label]="showGoogleSecret() ? 'Hide client secret' : 'Show client secret'">
                     <mat-icon class="material-symbols-rounded">{{ showGoogleSecret() ? 'visibility_off' : 'visibility' }}</mat-icon>
                   </button>
+                  <mat-hint>{{ googleForm.clientSecretConfigured ? 'Leave blank to keep the saved client secret, or enter a new one to replace it.' : 'Required the first time you configure Google OAuth.' }}</mat-hint>
                 </mat-form-field>
                 <mat-form-field appearance="outline" subscriptSizing="dynamic">
                   <mat-label>Redirect URI</mat-label>
                   <input matInput name="googleRedirectUri" [(ngModel)]="googleForm.redirectUri" placeholder="http://localhost:5228/api/integrations/google/callback" required />
                 </mat-form-field>
                 <div class="row between">
-                  <span class="muted small">Saved values are written to the API appsettings.json file.</span>
+                  <span class="muted small">Client secrets are stored in protected local storage and are never sent back to the browser after saving.</span>
                   <button mat-flat-button color="primary" type="submit" [disabled]="busy()">Save Google settings</button>
                 </div>
               </form>
@@ -329,13 +331,13 @@ export class SettingsComponent {
   readonly busy = signal(false);
   readonly countryOptions = [
     'United Kingdom', 'Germany', 'Netherlands', 'Ireland', 'France', 'Belgium', 'Luxembourg', 'Switzerland',
-    'Sweden', 'Norway', 'Denmark', 'Finland', 'Austria', 'Spain', 'Portugal', 'Italy', 'Poland',
+    'Sweden', 'Norway', 'Denmark', 'Finland', 'Iceland', 'Austria', 'Spain', 'Portugal', 'Italy', 'Malta', 'Greece', 'Cyprus', 'Poland', 'Slovakia', 'Bulgaria', 'Croatia', 'Slovenia', 'Serbia', 'Estonia', 'Latvia', 'Lithuania',
     'Czech Republic', 'Hungary', 'Romania', 'Other European Countries'
   ];
   readonly workModeOptions = ['Remote', 'Hybrid', 'Onsite', 'Flexible'];
   form = { mode: 'DEMO', llmProvider: 'Demo', llmDisplayName: 'Demo', llmBaseUrl: 'https://api.openai.com/v1/', llmApiKey: '', llmModel: 'gpt-4o-mini', masterResumePath: '' };
   jobSearchForm = { preferredCountries: [] as string[], linkedInProfileUrl: '', preferredRolesText: '', workMode: '', salaryExpectation: '', workAuthorization: '' };
-  googleForm: GoogleOAuthSettings = { clientId: '', clientSecret: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback', configured: false };
+  googleForm = { clientId: '', clientSecret: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback', clientSecretConfigured: false, configured: false };
   importFile: File | null = null;
   resumeFile: File | null = null;
   readonly dragging = signal(false);
@@ -361,10 +363,10 @@ export class SettingsComponent {
         this.api.settings(),
         this.api.jobSearchPreferences(),
         this.api.googleStatus().catch(() => ({ configured: false, connected: false }) as GoogleStatus),
-        this.api.googleOAuthSettings().catch(() => ({ clientId: '', clientSecret: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback', configured: false }) as GoogleOAuthSettings)
+        this.api.googleOAuthSettings().catch(() => ({ clientId: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback', clientSecretConfigured: false, configured: false }) as GoogleOAuthSettings)
       ]);
       this.settings.set(s); this.settingsState.update(s); this.preferences.set(p); this.google.set(g);
-      this.googleForm = { clientId: go.clientId, clientSecret: go.clientSecret, redirectUri: go.redirectUri, configured: go.configured };
+      this.googleForm = { clientId: go.clientId, clientSecret: '', redirectUri: go.redirectUri, clientSecretConfigured: go.clientSecretConfigured, configured: go.configured };
       this.form = { mode: s.mode, llmProvider: s.llmProvider, llmDisplayName: s.llmDisplayName, llmBaseUrl: s.llmBaseUrl, llmApiKey: '', llmModel: s.llmModel, masterResumePath: s.masterResumePath };
       this.jobSearchForm = {
         preferredCountries: [...p.preferredCountries],
@@ -384,6 +386,18 @@ export class SettingsComponent {
       this.notify.success('Settings saved locally.');
     });
   }
+
+  onProviderChange(provider: string): void {
+    const presets: Record<string, { name: string; baseUrl: string; model: string }> = {
+      Gemini: { name: 'Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', model: 'gemini-3.5-flash-lite' },
+      OpenAI: { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1/', model: 'gpt-4o-mini' },
+      Demo: { name: 'Demo', baseUrl: this.form.llmBaseUrl, model: this.form.llmModel }
+    };
+    const preset = presets[provider];
+    if (!preset) return;
+    this.form = { ...this.form, llmDisplayName: preset.name, llmBaseUrl: preset.baseUrl, llmModel: preset.model, llmApiKey: '' };
+  }
+
   saveJobSearchPreferences() {
     const preferredRoles = this.jobSearchForm.preferredRolesText
       .split(/[\n,]/)
@@ -401,15 +415,15 @@ export class SettingsComponent {
       this.notify.success('Job search preferences saved.');
     });
   }
-  googleConfigured() { return !!this.googleForm.clientId.trim() && !!this.googleForm.clientSecret.trim() && !!this.googleForm.redirectUri.trim(); }
+  googleConfigured() { return !!this.googleForm.clientId.trim() && !!this.googleForm.redirectUri.trim() && (this.googleForm.clientSecretConfigured || !!this.googleForm.clientSecret.trim()); }
   saveGoogleOAuth() {
     return this.run(async () => {
       await this.api.updateGoogleOAuthSettings({
         clientId: this.googleForm.clientId,
-        clientSecret: this.googleForm.clientSecret,
+        clientSecret: this.googleForm.clientSecret.trim() || null,
         redirectUri: this.googleForm.redirectUri
       });
-      this.notify.success('Google OAuth settings saved to appsettings.json.');
+      this.notify.success('Google OAuth settings saved to protected local storage.');
     });
   }
   connect() { return this.run(async () => { const { url } = await this.api.googleAuthorizeUrl(); window.location.href = url; }); }
@@ -459,3 +473,4 @@ export class SettingsComponent {
     try { await action(); await this.load(); } catch (e) { this.error.set(describeError(e)); } finally { this.busy.set(false); }
   }
 }
+

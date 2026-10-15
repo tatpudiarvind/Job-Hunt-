@@ -12,7 +12,9 @@ public sealed record Job(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     JobAnalysis? Analysis = null,
-    JobMatch? Match = null)
+    JobMatch? Match = null,
+    SponsorshipEvidence? Sponsorship = null,
+    RecruiterContact? Recruiter = null)
 {
     public static Job Create(string title, string company, string location, string source, string? url, string description)
     {
