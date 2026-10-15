@@ -16,6 +16,13 @@ public sealed class JobDiscoveryApiTests
     {
         using var factory = new DiscoveryApiFactory();
         var client = await SignedInClientAsync(factory);
+        foreach (var skill in new[] { "C#", "Azure" })
+        {
+            var createdFact = await client.PostAsJsonAsync("/api/candidate-profile/facts", new { factType = "SKILL", name = skill, value = skill, sourceReference = "Test setup" });
+            createdFact.EnsureSuccessStatusCode();
+            var fact = await createdFact.Content.ReadFromJsonAsync<JsonElement>();
+            (await client.PostAsync($"/api/candidate-profile/facts/{fact.GetProperty("id").GetGuid()}/verify", null)).EnsureSuccessStatusCode();
+        }
 
         var response = await client.PostAsJsonAsync("/api/jobs/discover", new { maxResults = 10 });
         response.EnsureSuccessStatusCode();

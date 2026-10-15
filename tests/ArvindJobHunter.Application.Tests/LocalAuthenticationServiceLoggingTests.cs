@@ -62,7 +62,7 @@ public sealed class LocalAuthenticationServiceLoggingTests
     {
         var (service, log) = await CreateAsync();
 
-        Assert.False(await service.ResetPasswordAsync("s3cret-typed-here", "another-long-password", CancellationToken.None));
+        Assert.False(await service.ResetPasswordAsync("s3cret-typed-here", "current-password", "another-long-password", CancellationToken.None));
 
         Assert.DoesNotContain(log.Messages, m => m.Contains("s3cret-typed-here", StringComparison.Ordinal));
     }

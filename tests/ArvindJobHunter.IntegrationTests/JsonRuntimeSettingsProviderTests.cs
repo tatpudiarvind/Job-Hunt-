@@ -29,7 +29,7 @@ public sealed class JsonRuntimeSettingsProviderTests : IDisposable
     [Fact]
     public async Task WithoutASavedFile_TheConfiguredRuntimeValuesApply()
     {
-        var provider = new JsonRuntimeSettingsProvider(new JsonFileStore<RuntimeSettings>(directory, "settings.json"), Configured);
+        var provider = new JsonRuntimeSettingsProvider(new JsonFileStore<RuntimeSettings>(directory, "settings.json"), new MemorySecretStore(), Configured);
 
         var settings = await provider.GetAsync(CancellationToken.None);
 
@@ -41,7 +41,7 @@ public sealed class JsonRuntimeSettingsProviderTests : IDisposable
     {
         var store = new JsonFileStore<RuntimeSettings>(directory, "settings.json");
         await store.SaveAsync(new RuntimeSettings { Mode = ExecutionMode.LIVE, LlmProvider = "Demo", LlmDisplayName = "Demo", MasterResumePath = "", QualificationThreshold = 60, ApprovalTtlHours = 24 }, CancellationToken.None);
-        var provider = new JsonRuntimeSettingsProvider(store, Configured);
+        var provider = new JsonRuntimeSettingsProvider(store, new MemorySecretStore(), Configured);
 
         var settings = await provider.GetAsync(CancellationToken.None);
 
@@ -81,5 +81,12 @@ public sealed class JsonRuntimeSettingsProviderTests : IDisposable
         Assert.Contains("mode DRY_RUN", summary);
         Assert.Contains("API key set", summary);
         Assert.DoesNotContain("configured-key", summary);
+    }
+
+    private sealed class MemorySecretStore : ISecretStore
+    {
+        private readonly Dictionary<string, string?> values = [];
+        public Task<string?> GetAsync(string name, CancellationToken cancellationToken) => Task.FromResult(values.GetValueOrDefault(name));
+        public Task SaveAsync(string name, string? value, CancellationToken cancellationToken) { values[name] = value; return Task.CompletedTask; }
     }
 }

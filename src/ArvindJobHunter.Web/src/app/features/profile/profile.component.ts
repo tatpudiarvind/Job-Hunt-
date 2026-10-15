@@ -1,4 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -15,6 +16,10 @@ import { PageHeaderComponent } from '../../shared/page-header.component';
 import { NotifyService } from '../../shared/notify.service';
 
 const FACT_TYPES = ['SKILL', 'EXPERIENCE', 'EDUCATION', 'CERTIFICATION', 'LANGUAGE', 'ACHIEVEMENT'];
+
+function blankProfile(): CandidateProfile {
+  return { id: '', name: '', currentRole: '', currentCompany: null, updatedAt: '', version: '' };
+}
 
 @Component({
   selector: 'app-profile',
@@ -111,7 +116,17 @@ export class ProfileComponent {
   constructor() { void this.load(); }
 
   async load(): Promise<void> {
-    try { const [p, f] = await Promise.all([this.api.profile(), this.api.facts()]); this.profile.set(p); this.facts.set(f); }
+    try {
+      const [p, f] = await Promise.all([
+        this.api.profile().catch(error => {
+          if (error instanceof HttpErrorResponse && error.status === 404) return blankProfile();
+          throw error;
+        }),
+        this.api.facts()
+      ]);
+      this.profile.set(p);
+      this.facts.set(f);
+    }
     catch (e) { this.error.set(describeError(e)); }
   }
 

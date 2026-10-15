@@ -52,6 +52,18 @@ import { NotifyService } from '../../shared/notify.service';
             </mat-form-field>
             <button mat-stroked-button [disabled]="busy() || !recipient" (click)="draftRecruiter()"><mat-icon class="material-symbols-rounded">edit_note</mat-icon>Draft email</button>
           </div>
+          <div class="row actions">
+            @if (j.recruiter; as c) {
+              <span class="small">Recorded contact: <strong>{{ c.status }}</strong>@if (c.email) { · {{ c.email }} } @if (c.source) { · from {{ c.source }} }</span>
+            } @else { <span class="small muted">No recruiter contact recorded. Contacts are never guessed — add one you found yourself.</span> }
+            <span class="grow"></span>
+            <mat-form-field appearance="outline" class="recipient" subscriptSizing="dynamic">
+              <mat-label>Where you found it</mat-label>
+              <input matInput name="contactSource" [(ngModel)]="contactSource" placeholder="e.g. careers page, LinkedIn post" />
+            </mat-form-field>
+            <button mat-stroked-button [disabled]="busy() || !recipient || !contactSource" (click)="saveContact('USER_PROVIDED')"><mat-icon class="material-symbols-rounded">contact_mail</mat-icon>Save contact</button>
+            <button mat-button [disabled]="busy()" (click)="saveContact('NOT_FOUND')">Not found</button>
+          </div>
         </section>
 
         <mat-tab-group animationDuration="150ms">
@@ -169,6 +181,7 @@ export class JobDetailComponent {
   readonly error = signal('');
   readonly busy = signal(false);
   recipient = '';
+  contactSource = '';
   private jobId = '';
 
   @Input() set id(value: string) { this.jobId = value; void this.load(); }
@@ -196,6 +209,12 @@ export class JobDetailComponent {
     }, false);
   }
   draftRecruiter(): Promise<void> { return this.run(async () => { await this.api.recruiterEmail(this.jobId, this.recipient); this.notify.success('Recruiter email drafted. Nothing has been sent.'); }); }
+  saveContact(status: 'USER_PROVIDED' | 'NOT_FOUND'): Promise<void> {
+    return this.run(async () => {
+      await this.api.setRecruiterContact(this.jobId, status, null, status === 'NOT_FOUND' ? null : this.recipient, status === 'NOT_FOUND' ? null : this.contactSource);
+      this.notify.success(status === 'NOT_FOUND' ? 'Marked as no recruiter contact found.' : 'Recruiter contact saved.');
+    });
+  }
 
   private async run(action: () => Promise<void>, reload = true): Promise<void> {
     this.busy.set(true); this.error.set('');

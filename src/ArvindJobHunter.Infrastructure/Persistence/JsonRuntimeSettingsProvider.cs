@@ -8,8 +8,9 @@ namespace ArvindJobHunter.Infrastructure.Persistence;
 /// Until that file exists the configured <c>Runtime:*</c> values apply. Fields the UI cannot edit
 /// (qualification threshold, approval TTL) always come from configuration.
 /// </summary>
-public sealed class JsonRuntimeSettingsProvider(IJsonStore<RuntimeSettings> store, RuntimeSettings defaults, ILogger<JsonRuntimeSettingsProvider>? logger = null) : IRuntimeSettingsProvider, ICacheInvalidatable
+public sealed class JsonRuntimeSettingsProvider(IJsonStore<RuntimeSettings> store, ISecretStore secrets, RuntimeSettings defaults, ILogger<JsonRuntimeSettingsProvider>? logger = null) : IRuntimeSettingsProvider, ICacheInvalidatable
 {
+    private const string LlmApiKeySecretName = "runtime.llmApiKey";
     private readonly SemaphoreSlim gate = new(1, 1);
     private RuntimeSettings? cache;
 
@@ -24,7 +25,10 @@ public sealed class JsonRuntimeSettingsProvider(IJsonStore<RuntimeSettings> stor
             if (cache is not null) return cache;
             if (!await store.ExistsAsync(cancellationToken))
             {
-                cache = defaults;
+                cache = defaults with
+                {
+                    LlmApiKey = await secrets.GetAsync(LlmApiKeySecretName, cancellationToken) ?? defaults.LlmApiKey
+                };
                 logger?.LogInformation("No saved runtime settings yet; using configured defaults: {Settings}", Describe(cache));
                 return cache;
             }
@@ -36,7 +40,7 @@ public sealed class JsonRuntimeSettingsProvider(IJsonStore<RuntimeSettings> stor
                 LlmProvider = provider,
                 LlmDisplayName = string.IsNullOrWhiteSpace(loaded.LlmDisplayName) ? provider : loaded.LlmDisplayName,
                 LlmBaseUrl = string.IsNullOrWhiteSpace(loaded.LlmBaseUrl) ? defaults.LlmBaseUrl : loaded.LlmBaseUrl,
-                LlmApiKey = string.IsNullOrWhiteSpace(loaded.LlmApiKey) ? defaults.LlmApiKey : loaded.LlmApiKey,
+                LlmApiKey = await secrets.GetAsync(LlmApiKeySecretName, cancellationToken) ?? defaults.LlmApiKey,
                 LlmModel = string.IsNullOrWhiteSpace(loaded.LlmModel) ? defaults.LlmModel : loaded.LlmModel,
                 QualificationThreshold = defaults.QualificationThreshold,
                 ApprovalTtlHours = defaults.ApprovalTtlHours
@@ -52,9 +56,13 @@ public sealed class JsonRuntimeSettingsProvider(IJsonStore<RuntimeSettings> stor
         await gate.WaitAsync(cancellationToken);
         try
         {
-            cache = settings;
-            await store.SaveAsync(settings, cancellationToken);
-            logger?.LogDebug("Runtime settings saved: {Settings}", Describe(settings));
+            var apiKey = string.IsNullOrWhiteSpace(settings.LlmApiKey)
+                ? await secrets.GetAsync(LlmApiKeySecretName, cancellationToken) ?? defaults.LlmApiKey
+                : settings.LlmApiKey.Trim();
+            cache = settings with { LlmApiKey = apiKey };
+            await secrets.SaveAsync(LlmApiKeySecretName, apiKey, cancellationToken);
+            await store.SaveAsync(settings with { LlmApiKey = string.Empty }, cancellationToken);
+            logger?.LogDebug("Runtime settings saved: {Settings}", Describe(cache));
         }
         finally { gate.Release(); }
     }

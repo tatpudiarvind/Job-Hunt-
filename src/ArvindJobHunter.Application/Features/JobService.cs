@@ -28,6 +28,17 @@ public sealed class JobService(IRepository<Job> jobs, IRepository<JobApplication
         logger.LogInformation("Job {JobId} saved with status {Status}", job.Id, job.Status);
     }
 
+    /// <summary>Records a recruiter contact the user found themselves. Contacts are never guessed or scraped.</summary>
+    public async Task<Job?> SetRecruiterContactAsync(Guid id, RecruiterContactStatus status, string? name, string? email, string? source, Guid userId, CancellationToken cancellationToken)
+    {
+        var job = await jobs.GetAsync(id, cancellationToken);
+        if (job is null) return null;
+        var updated = job with { Recruiter = RecruiterContact.Create(status, name, email, source), UpdatedAt = DateTimeOffset.UtcNow };
+        await jobs.UpsertAsync(updated, cancellationToken);
+        await audit.RecordAsync(userId, "RECRUITER_CONTACT_RECORDED", "Job", id.ToString(), "SUCCESS", $"Status={status}; Source={updated.Recruiter!.Source}", cancellationToken);
+        return updated;
+    }
+
     public async Task<Job?> DismissAsync(Guid id, Guid userId, CancellationToken cancellationToken)
     {
         var job = await jobs.GetAsync(id, cancellationToken);

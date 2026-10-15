@@ -144,23 +144,26 @@ public static class ReadModelEndpoints
         api.MapGet("/settings/google-oauth", async (IGoogleOAuthSettingsProvider googleSettings, CancellationToken ct) =>
         {
             var current = await googleSettings.GetAsync(ct);
-            return new GoogleOAuthSettingsResponse(current.ClientId, current.ClientSecret, current.RedirectUri,
-                !string.IsNullOrWhiteSpace(current.ClientId) && !string.IsNullOrWhiteSpace(current.ClientSecret));
+            var hasSecret = !string.IsNullOrWhiteSpace(current.ClientSecret);
+            return new GoogleOAuthSettingsResponse(current.ClientId, current.RedirectUri, hasSecret,
+                !string.IsNullOrWhiteSpace(current.ClientId) && hasSecret);
         }).WithTags("Settings");
 
         api.MapPut("/settings/google-oauth", async Task<IResult> (UpdateGoogleOAuthSettingsRequest request, ClaimsPrincipal user, IGoogleOAuthSettingsProvider googleSettings, AuditService audit, CancellationToken ct) =>
         {
             var errors = new Dictionary<string, string[]>();
             if (string.IsNullOrWhiteSpace(request.ClientId)) errors["clientId"] = ["Client ID is required."];
-            if (string.IsNullOrWhiteSpace(request.ClientSecret)) errors["clientSecret"] = ["Client secret is required."];
             if (string.IsNullOrWhiteSpace(request.RedirectUri)) errors["redirectUri"] = ["Redirect URI is required."];
             else if (!Uri.TryCreate(request.RedirectUri, UriKind.Absolute, out _)) errors["redirectUri"] = ["Redirect URI must be an absolute URL."];
+            var current = await googleSettings.GetAsync(ct);
+            var secret = string.IsNullOrWhiteSpace(request.ClientSecret) ? current.ClientSecret : request.ClientSecret.Trim();
+            if (string.IsNullOrWhiteSpace(secret)) errors["clientSecret"] = ["Client secret is required the first time you configure Google OAuth."];
             if (errors.Count > 0) return Results.ValidationProblem(errors);
 
-            var updated = new GoogleOAuthConfiguration(request.ClientId.Trim(), request.ClientSecret.Trim(), request.RedirectUri.Trim());
+            var updated = new GoogleOAuthConfiguration(request.ClientId.Trim(), secret, request.RedirectUri.Trim());
             await googleSettings.SaveAsync(updated, ct);
-            await audit.RecordAsync(user.UserId(), "GOOGLE_OAUTH_SETTINGS_UPDATED", "GoogleOAuth", "local", "SUCCESS", $"RedirectUri={updated.RedirectUri}; ClientIdLength={updated.ClientId.Length}", ct);
-            return Results.Ok(new GoogleOAuthSettingsResponse(updated.ClientId, updated.ClientSecret, updated.RedirectUri, true));
+            await audit.RecordAsync(user.UserId(), "GOOGLE_OAUTH_SETTINGS_UPDATED", "GoogleOAuth", "local", "SUCCESS", $"RedirectUri={updated.RedirectUri}; ClientIdLength={updated.ClientId.Length}; Secret={(string.IsNullOrWhiteSpace(request.ClientSecret) ? "unchanged" : "updated")}", ct);
+            return Results.Ok(new GoogleOAuthSettingsResponse(updated.ClientId, updated.RedirectUri, true, true));
         }).WithTags("Settings");
 
         api.MapPost("/settings/master-resume", async Task<IResult> (HttpRequest request, ClaimsPrincipal user, IRuntimeSettingsProvider settings, ResumeAnalysisService analysis, AuditService audit, CancellationToken ct) =>

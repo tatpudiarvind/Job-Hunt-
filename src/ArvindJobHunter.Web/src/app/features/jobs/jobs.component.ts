@@ -10,6 +10,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatExpansionModule } from '@angular/material/expansion';
+import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { ApiService } from '../../core/api.service';
 import { Job } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
@@ -22,7 +23,7 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
 @Component({
   selector: 'app-jobs',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressBarModule, MatTooltipModule, MatButtonToggleModule, MatExpansionModule, PageHeaderComponent, StatusChipComponent],
+  imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressBarModule, MatTooltipModule, MatButtonToggleModule, MatExpansionModule, MatPaginatorModule, PageHeaderComponent, StatusChipComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Pipeline" title="Jobs" icon="work" subtitle="Discover UK and Europe roles with explicit visa sponsorship from supported public career sites, then review or start the approval-gated apply workflow.">
@@ -72,9 +73,9 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
         <div class="row between toolbar">
           <mat-form-field appearance="outline" class="search" subscriptSizing="dynamic">
             <mat-icon matPrefix class="material-symbols-rounded">search</mat-icon>
-            <input matInput placeholder="Search title or company" [ngModel]="query()" (ngModelChange)="query.set($event)" />
+            <input matInput placeholder="Search title or company" [ngModel]="query()" (ngModelChange)="query.set($event); pageIndex.set(0)" />
           </mat-form-field>
-          <mat-button-toggle-group [value]="filter()" (change)="filter.set($event.value)" hideSingleSelectionIndicator>
+          <mat-button-toggle-group [value]="filter()" (change)="filter.set($event.value); pageIndex.set(0)" hideSingleSelectionIndicator>
             <mat-button-toggle value="ALL">All ({{ jobs().length }})</mat-button-toggle>
             <mat-button-toggle value="QUALIFIED">Qualified</mat-button-toggle>
             <mat-button-toggle value="DISCOVERED">New</mat-button-toggle>
@@ -82,36 +83,56 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
           </mat-button-toggle-group>
         </div>
 
-        @for (j of visible(); track j.id) {
-          <div class="item job">
-            <div class="main">
-              <div class="row">
-                <a class="title" [routerLink]="['/jobs', j.id]">{{ j.title }}</a>
-                <app-status-chip [status]="j.status" />
-              </div>
-              <span class="muted small">{{ j.company }}@if (j.location) { · {{ j.location }}} · {{ j.source }} · added {{ j.createdAt | date:'mediumDate' }}</span>
-              @if (j.match) {
-                <div class="chips mt-sm">
-                  @for (s of j.match.matchedSkills.slice(0, 6); track s) { <span class="chip success">{{ s }}</span> }
-                  @for (s of j.match.missingSkills.slice(0, 3); track s) { <span class="chip danger">{{ s }}</span> }
-                </div>
-              }
-            </div>
-            <div class="side">
-              @if (j.match) { <span class="score big" [class.low]="j.match.score < 60">{{ j.match.score }}%</span> } @else { <span class="muted small">not analyzed</span> }
-              <div class="row">
-                @if (j.status !== 'DISMISSED') {
-                  <button mat-flat-button color="primary" [disabled]="busy()" (click)="apply(j)">Apply</button>
-                  <button mat-stroked-button [disabled]="busy()" (click)="analyze(j)">{{ j.analysis ? 'Re-analyze' : 'Analyze' }}</button>
-                  <button mat-icon-button matTooltip="Dismiss" [disabled]="busy()" (click)="dismiss(j)"><mat-icon class="material-symbols-rounded">visibility_off</mat-icon></button>
-                }
-                <a mat-icon-button matTooltip="Open" [routerLink]="['/jobs', j.id]"><mat-icon class="material-symbols-rounded">arrow_forward</mat-icon></a>
-              </div>
-            </div>
-          </div>
-         } @empty {
-          <div class="empty"><mat-icon class="material-symbols-rounded">work_off</mat-icon>{{ jobs().length ? 'No jobs match this filter.' : 'No jobs yet — discover sponsored roles or add one manually.' }}</div>
-        }
+		<div class="table-wrap">
+		  <table class="jobs-table">
+			<thead>
+			  <tr>
+				<th>Role</th>
+				<th>Company</th>
+				<th>Location</th>
+				<th>Source</th>
+				<th>Status</th>
+				<th class="num">Match</th>
+				<th>Added</th>
+				<th class="actions">Actions</th>
+			  </tr>
+			</thead>
+			<tbody>
+			  @for (j of paged(); track j.id) {
+				<tr>
+				  <td>
+					<a class="title" [routerLink]="['/jobs', j.id]">{{ j.title }}</a>
+					@if (j.match; as m) {
+					  <div class="chips mt-sm">
+						@for (s of m.matchedSkills.slice(0, 4); track s) { <span class="chip success">{{ s }}</span> }
+						@for (s of m.missingSkills.slice(0, 2); track s) { <span class="chip danger">{{ s }}</span> }
+					  </div>
+					}
+				  </td>
+				  <td>{{ j.company }}</td>
+				  <td>{{ j.location || '—' }}</td>
+				  <td>@if (j.url) { <a [href]="j.url" target="_blank" rel="noopener noreferrer">{{ j.source }}</a> } @else { {{ j.source }} }</td>
+				  <td><app-status-chip [status]="j.status" /></td>
+				  <td class="num">@if (j.match; as m) { <span class="score" [class.low]="m.score < 60">{{ m.score }}%</span> } @else { <span class="muted small">—</span> }</td>
+				  <td class="nowrap">{{ j.createdAt | date:'mediumDate' }}</td>
+				  <td class="actions">
+					<div class="row nowrap">
+					  @if (j.status !== 'DISMISSED') {
+						<button mat-flat-button color="primary" [disabled]="busy()" (click)="apply(j)">Apply</button>
+						<button mat-stroked-button [disabled]="busy()" (click)="analyze(j)">{{ j.analysis ? 'Re-analyze' : 'Analyze' }}</button>
+						<button mat-icon-button matTooltip="Dismiss" [disabled]="busy()" (click)="dismiss(j)"><mat-icon class="material-symbols-rounded">visibility_off</mat-icon></button>
+					  }
+					  <a mat-icon-button matTooltip="Open" [routerLink]="['/jobs', j.id]"><mat-icon class="material-symbols-rounded">arrow_forward</mat-icon></a>
+					</div>
+				  </td>
+				</tr>
+			  } @empty {
+				<tr><td colspan="8"><div class="empty"><mat-icon class="material-symbols-rounded">work_off</mat-icon>{{ jobs().length ? 'No jobs match this filter.' : 'No jobs yet — discover sponsored roles or add one manually.' }}</div></td></tr>
+			  }
+			</tbody>
+		  </table>
+		</div>
+		<mat-paginator [length]="visible().length" [pageIndex]="pageIndex()" [pageSize]="pageSize()" [pageSizeOptions]="[10, 25, 50, 100]" (page)="onPage($event)" showFirstLastButtons aria-label="Select jobs page" />
       </section>
     </div>
   `,
@@ -122,12 +143,17 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
     .form .span { grid-column: 1 / -1; }
     .toolbar { margin-bottom: .5rem; }
     .search { width: min(100%, 360px); }
-    .job { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
-    .job .main { display: grid; gap: .3rem; min-width: 0; }
-    .job .side { display: grid; gap: .5rem; justify-items: end; flex: none; }
-    .score.big { font-size: 1.5rem; }
+    .table-wrap { overflow-x: auto; }
+    .jobs-table { width: 100%; border-collapse: collapse; }
+    .jobs-table th, .jobs-table td { padding: .6rem .5rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--mat-sys-outline-variant, rgba(0,0,0,.12)); }
+    .jobs-table th { font-weight: 600; font-size: .85rem; white-space: nowrap; }
+    .jobs-table tbody tr:hover { background: var(--mat-sys-surface-container-low, rgba(0,0,0,.03)); }
+    .jobs-table .num, .jobs-table .actions { text-align: right; }
+    .jobs-table .actions .row { justify-content: flex-end; }
+    .nowrap { white-space: nowrap; }
+    .title { font-weight: 600; }
     .mt-sm { margin-top: .35rem; }
-    @media (max-width: 720px) { .form { grid-template-columns: 1fr; } .job { flex-direction: column; } .job .side { justify-items: start; } }
+    @media (max-width: 720px) { .form { grid-template-columns: 1fr; } }
   `]
 })
 export class JobsComponent {
@@ -142,12 +168,18 @@ export class JobsComponent {
   readonly formOpen = signal(false);
   readonly query = signal('');
   readonly filter = signal<Filter>('ALL');
+  readonly pageIndex = signal(0);
+  readonly pageSize = signal(25);
   readonly visible = computed(() => {
     const q = this.query().trim().toLowerCase();
     const f = this.filter();
     return this.jobs().filter(j =>
       (f === 'ALL' ? j.status !== 'DISMISSED' : f === 'QUALIFIED' ? j.status === 'QUALIFIED' : j.status === f) &&
       (!q || j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q)));
+  });
+  readonly paged = computed(() => {
+    const start = this.pageIndex() * this.pageSize();
+    return this.visible().slice(start, start + this.pageSize());
   });
   importUrl = '';
   form = { title: '', company: '', location: '', source: 'Manual', url: '', description: '' };
@@ -156,13 +188,15 @@ export class JobsComponent {
 
   async load(): Promise<void> { try { this.jobs.set(await this.api.jobs()); } catch (e) { this.error.set(describeError(e)); } }
 
+  onPage(event: PageEvent): void { this.pageIndex.set(event.pageIndex); this.pageSize.set(event.pageSize); }
+
   reset(): void { this.form = { title: '', company: '', location: '', source: 'Manual', url: '', description: '' }; this.warnings.set([]); this.importUrl = ''; }
 
   discover(): Promise<void> {
     return this.run(async () => {
       const result = await this.api.discoverJobs(20);
       this.discoveryNotes.set(result.notes);
-      this.discoverySummary.set(`Discovered ${result.jobs.length} UK/EU visa-sponsorship role(s) from ${result.sources.join(', ')}. Imported ${result.imported}, updated ${result.updated}, skipped ${result.skipped}.`);
+      this.discoverySummary.set(`Discovered ${result.jobs.length} European visa-sponsorship role(s) with at least 60% skill match from ${result.sources.join(', ')}. Imported ${result.imported}, updated ${result.updated}, skipped ${result.skipped}.`);
       this.notify.success(result.imported > 0 ? `Imported ${result.imported} sponsored role(s).` : 'Discovery finished.');
     });
   }
