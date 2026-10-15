@@ -54,6 +54,21 @@ public sealed class JsonRuntimeSettingsProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task ALegacyPlainTextKey_IsMigratedIntoTheSecretStore_AndScrubbedFromTheFile()
+    {
+        var store = new JsonFileStore<RuntimeSettings>(directory, "settings.json");
+        await store.SaveAsync(new RuntimeSettings { Mode = ExecutionMode.LIVE, LlmProvider = "Gemini", LlmDisplayName = "Gemini", LlmApiKey = "legacy-key" }, CancellationToken.None);
+        var secrets = new MemorySecretStore();
+        var provider = new JsonRuntimeSettingsProvider(store, secrets, Configured);
+
+        var settings = await provider.GetAsync(CancellationToken.None);
+
+        Assert.Equal("legacy-key", settings.LlmApiKey);
+        Assert.Equal("legacy-key", await secrets.GetAsync("runtime.llmApiKey", CancellationToken.None));
+        Assert.Equal("", (await store.LoadAsync(CancellationToken.None)).LlmApiKey);
+    }
+
+    [Fact]
     public async Task ExistsAsync_BecomesTrueAfterTheFirstSave()
     {
         var store = new JsonFileStore<RuntimeSettings>(directory, "settings.json");
