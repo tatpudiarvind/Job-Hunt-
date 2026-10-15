@@ -18,3 +18,4 @@ src/ArvindJobHunter.Worker/output/
 
 # Markdown log files (may contain personal data such as email addresses and file paths)
 **/logs/
+.jobhunter.settings.json

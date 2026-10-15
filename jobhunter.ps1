@@ -6,12 +6,18 @@
 	.\jobhunter.ps1 start
 	.\jobhunter.ps1 stop
 	.\jobhunter.ps1 status
+	.\jobhunter.ps1 start -Browser chrome
+	.\jobhunter.ps1 browser default   # save preference: chrome | edge | firefox | default
 #>
 [CmdletBinding()]
 param(
 	[Parameter(Position = 0)]
-	[ValidateSet('start', 'stop', 'status', 'restart')]
+	[ValidateSet('start', 'stop', 'status', 'restart', 'browser')]
 	[string]$Command = 'start',
+
+	[Parameter(Position = 1)]
+	[ValidateSet('', 'chrome', 'edge', 'firefox', 'default')]
+	[string]$Browser = '',
 
 	[switch]$NoBrowser
 )
@@ -23,6 +29,45 @@ $webDir  = Join-Path $root 'src\ArvindJobHunter.Web'
 $apiPort = 5228
 $webPort = 4200
 $appUrl  = "http://localhost:$webPort"
+$settingsFile = Join-Path $root '.jobhunter.settings.json'
+
+function Get-BrowserPreference {
+	if (Test-Path $settingsFile) {
+		try { $saved = (Get-Content $settingsFile -Raw | ConvertFrom-Json).browser; if ($saved) { return $saved } } catch { }
+	}
+	return 'chrome'
+}
+
+function Set-BrowserPreference([string]$name) {
+	if (-not $name) { Write-Host "Current browser: $(Get-BrowserPreference)  (options: chrome, edge, firefox, default)"; return }
+	@{ browser = $name } | ConvertTo-Json | Set-Content -Path $settingsFile -Encoding UTF8
+	Write-Host "Browser preference saved: $name" -ForegroundColor Green
+}
+
+function Find-BrowserExe([string]$name) {
+	$exe = @{ chrome = 'chrome.exe'; edge = 'msedge.exe'; firefox = 'firefox.exe' }[$name]
+	if (-not $exe) { return $null }
+	foreach ($hive in 'HKCU:', 'HKLM:') {
+		$path = (Get-ItemProperty "$hive\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$exe" -ErrorAction SilentlyContinue).'(default)'
+		if ($path -and (Test-Path $path)) { return $path }
+	}
+	$candidates = @{
+		chrome  = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe")
+		edge    = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe")
+		firefox = @("$env:ProgramFiles\Mozilla Firefox\firefox.exe", "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe")
+	}[$name]
+	return $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+}
+
+function Open-App {
+	$name = if ($Browser) { $Browser } else { Get-BrowserPreference }
+	if ($name -ne 'default') {
+		$exePath = Find-BrowserExe $name
+		if ($exePath) { Start-Process -FilePath $exePath -ArgumentList $appUrl; return }
+		Write-Host "  [!!] $name not found; using the system default browser" -ForegroundColor Yellow
+	}
+	Start-Process $appUrl
+}
 
 function Get-ListeningPid([int]$port) {
 	$conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -73,7 +118,7 @@ function Start-App {
 
 	if ($apiOk -and $webOk) {
 		Write-Host "`nJob Hunter is running at $appUrl" -ForegroundColor Green
-		if (-not $NoBrowser) { Start-Process $appUrl }
+		if (-not $NoBrowser) { Open-App }
 	}
 	Write-Host "Run 'jobhunter stop' to shut everything down.`n" -ForegroundColor DarkGray
 }
@@ -100,4 +145,5 @@ switch ($Command) {
 	'stop'    { Stop-App }
 	'restart' { Stop-App; Start-Sleep -Seconds 1; Start-App }
 	'status'  { Show-Status }
+	'browser' { Set-BrowserPreference $Browser }
 }
