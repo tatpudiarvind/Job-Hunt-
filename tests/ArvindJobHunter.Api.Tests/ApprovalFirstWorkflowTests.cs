@@ -75,16 +75,19 @@ public sealed class ApprovalFirstWorkflowTests : IClassFixture<ApiFactory>
         var client = await AuthenticatedClientAsync();
         var settings = await client.GetFromJsonAsync<JsonElement>("/api/settings");
         Assert.Equal(Path.GetFullPath(factory.DataDirectory), Path.GetFullPath(settings.GetProperty("dataDirectory").GetString()!));
-        Assert.True(File.Exists(Path.Combine(factory.DataDirectory, "candidate.json")));
+        Assert.False(File.Exists(Path.Combine(factory.DataDirectory, "candidate.json")));
     }
 
     [Fact]
-    public async Task Seed_CreatesProfileAndVerifiedFacts()
+    public async Task FirstRun_StartsWithoutProfileOrVerifiedFacts()
     {
         var client = await AuthenticatedClientAsync();
+
+        var profile = await client.GetAsync("/api/candidate-profile");
+        Assert.Equal(HttpStatusCode.NotFound, profile.StatusCode);
+
         var facts = await client.GetFromJsonAsync<JsonElement>("/api/candidate-profile/facts");
-        Assert.True(facts.GetArrayLength() >= 10);
-        Assert.All(facts.EnumerateArray(), f => Assert.True(f.GetProperty("isVerified").GetBoolean()));
+        Assert.Equal(0, facts.GetArrayLength());
     }
 
     [Fact]
@@ -141,13 +144,71 @@ public sealed class ApprovalFirstWorkflowTests : IClassFixture<ApiFactory>
         Assert.True(JsonDocument.Parse(preservedBody).RootElement.GetProperty("llmConfigured").GetBoolean());
 
         var persistedText = await File.ReadAllTextAsync(Path.Combine(isolatedFactory.DataDirectory, "settings.json"));
-        Assert.Contains("secret-key", persistedText);
+        Assert.DoesNotContain("secret-key", persistedText);
+        var secretsText = await File.ReadAllTextAsync(Path.Combine(isolatedFactory.DataDirectory, "secrets.json"));
+        Assert.DoesNotContain("secret-key", secretsText);
+    }
+
+    [Fact]
+    public async Task GoogleOAuthSettings_DoNotReturnOrPersistTheClientSecretInPlainText()
+    {
+        using var isolatedFactory = new ApiFactory();
+        var client = isolatedFactory.CreateClient();
+        var status = await client.GetFromJsonAsync<JsonElement>("/api/auth/status");
+        var credentials = new { username = "arvind", password = "correct-horse-battery-staple" };
+        if (!status.GetProperty("configured").GetBoolean())
+        {
+            var setup = await client.PostAsJsonAsync("/api/auth/setup", credentials);
+            Assert.True(setup.IsSuccessStatusCode, await setup.Content.ReadAsStringAsync());
+        }
+
+        var login = await client.PostAsJsonAsync("/api/auth/login", credentials);
+        login.EnsureSuccessStatusCode();
+        var session = await login.Content.ReadFromJsonAsync<JsonElement>();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.GetProperty("token").GetString());
+
+        var updated = await client.PutAsJsonAsync("/api/settings/google-oauth", new
+        {
+            clientId = "google-client-id",
+            clientSecret = "super-secret-google-client-secret",
+            redirectUri = "http://localhost:5228/api/integrations/google/callback"
+        });
+        updated.EnsureSuccessStatusCode();
+        var updatedBody = await updated.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("super-secret-google-client-secret", updatedBody);
+
+        var settings = await client.GetFromJsonAsync<JsonElement>("/api/settings/google-oauth");
+        Assert.Equal("google-client-id", settings.GetProperty("clientId").GetString());
+        Assert.Equal("http://localhost:5228/api/integrations/google/callback", settings.GetProperty("redirectUri").GetString());
+        Assert.True(settings.GetProperty("clientSecretConfigured").GetBoolean());
+        Assert.True(settings.GetProperty("configured").GetBoolean());
+        Assert.False(settings.TryGetProperty("clientSecret", out _));
+
+        var publicSettings = await File.ReadAllTextAsync(Path.Combine(isolatedFactory.DataDirectory, "google-oauth.json"));
+        Assert.DoesNotContain("super-secret-google-client-secret", publicSettings);
+        var secretsText = await File.ReadAllTextAsync(Path.Combine(isolatedFactory.DataDirectory, "secrets.json"));
+        Assert.DoesNotContain("super-secret-google-client-secret", secretsText);
     }
 
     [Fact]
     public async Task FullPipeline_RequiresApprovalBeforeExecution_AndIsIdempotent()
     {
         var client = await AuthenticatedClientAsync();
+
+        foreach (var skill in new[] { "C#", ".NET", "ASP.NET Core", "Azure", "Microservices", "LLMs", "RAG" })
+        {
+            var createdFact = await client.PostAsJsonAsync("/api/candidate-profile/facts", new
+            {
+                factType = "SKILL",
+                name = skill,
+                value = skill,
+                sourceReference = "Test setup"
+            });
+            createdFact.EnsureSuccessStatusCode();
+            var fact = await createdFact.Content.ReadFromJsonAsync<JsonElement>();
+            var verify = await client.PostAsync($"/api/candidate-profile/facts/{fact.GetProperty("id").GetGuid()}/verify", null);
+            verify.EnsureSuccessStatusCode();
+        }
 
         var created = await client.PostAsJsonAsync("/api/jobs", new
         {
@@ -223,7 +284,7 @@ public sealed class ApprovalFirstWorkflowTests : IClassFixture<ApiFactory>
         var session = await login.Content.ReadFromJsonAsync<JsonElement>();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.GetProperty("token").GetString());
 
-        var reset = await client.PostAsJsonAsync("/api/auth/reset-password", new { username = "arvind", newPassword = "new-correct-horse-battery-staple" });
+        var reset = await client.PostAsJsonAsync("/api/auth/reset-password", new { username = "arvind", currentPassword = "correct-horse-battery-staple", newPassword = "new-correct-horse-battery-staple" });
         reset.EnsureSuccessStatusCode();
 
         var oldSessionResponse = await client.GetAsync("/api/jobs");
@@ -237,11 +298,69 @@ public sealed class ApprovalFirstWorkflowTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task ResetPassword_WithWrongCurrentPassword_IsRejected()
+    {
+        using var isolatedFactory = new ApiFactory();
+        var client = isolatedFactory.CreateClient();
+        var signup = await client.PostAsJsonAsync("/api/auth/signup", new { username = "arvind", password = "correct-horse-battery-staple" });
+        signup.EnsureSuccessStatusCode();
+
+        var reset = await client.PostAsJsonAsync("/api/auth/reset-password", new { username = "arvind", currentPassword = "wrong-current-password", newPassword = "new-correct-horse-battery-staple" });
+        Assert.Equal(HttpStatusCode.BadRequest, reset.StatusCode);
+
+        var oldPasswordLogin = await isolatedFactory.CreateClient().PostAsJsonAsync("/api/auth/login", new { username = "arvind", password = "correct-horse-battery-staple" });
+        oldPasswordLogin.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public async Task Logout_InvalidatesToken()
     {
         var client = await AuthenticatedClientAsync();
         (await client.PostAsync("/api/auth/logout", null)).EnsureSuccessStatusCode();
         var after = await client.GetAsync("/api/jobs");
         Assert.Equal(HttpStatusCode.Unauthorized, after.StatusCode);
+    }
+
+    [Fact]
+    public async Task OpenApiDocument_DescribesTheReviewAndRecruiterContactEndpoints()
+    {
+        var client = await AuthenticatedClientAsync();
+        var doc = await client.GetStringAsync("/openapi/v1.json");
+        Assert.Contains("/api/applications/{id}/review", doc);
+        Assert.Contains("/api/jobs/{id}/recruiter-contact", doc);
+    }
+
+    [Fact]
+    public async Task RecruiterEmail_RequiresARecordedContact_AndNeverGuessesOne()
+    {
+        var client = await AuthenticatedClientAsync();
+        var created = await client.PostAsJsonAsync("/api/jobs", new
+        {
+            title = "Backend Engineer",
+            company = "Contact GmbH",
+            location = "Berlin",
+            source = "MANUAL",
+            description = "C# role."
+        });
+        var jobId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        var withoutContact = await client.PostAsJsonAsync($"/api/jobs/{jobId}/recruiter-email", new { recipient = (string?)null });
+        Assert.Equal(HttpStatusCode.BadRequest, withoutContact.StatusCode);
+
+        var notFound = await client.PutAsJsonAsync($"/api/jobs/{jobId}/recruiter-contact", new { status = "NOT_FOUND", email = "guess@contact.example" });
+        notFound.EnsureSuccessStatusCode();
+        var notFoundJob = await notFound.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, notFoundJob.GetProperty("recruiter").GetProperty("email").ValueKind);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync($"/api/jobs/{jobId}/recruiter-email", new { recipient = (string?)null })).StatusCode);
+
+        var missingSource = await client.PutAsJsonAsync($"/api/jobs/{jobId}/recruiter-contact", new { status = "USER_PROVIDED", email = "jane@contact.example" });
+        Assert.Equal(HttpStatusCode.BadRequest, missingSource.StatusCode);
+
+        var provided = await client.PutAsJsonAsync($"/api/jobs/{jobId}/recruiter-contact", new { status = "USER_PROVIDED", name = "Jane", email = "jane@contact.example", source = "Company careers page" });
+        provided.EnsureSuccessStatusCode();
+
+        var drafted = await client.PostAsJsonAsync($"/api/jobs/{jobId}/recruiter-email", new { recipient = (string?)null });
+        drafted.EnsureSuccessStatusCode();
+        Assert.Equal("jane@contact.example", (await drafted.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("to").GetString());
     }
 }

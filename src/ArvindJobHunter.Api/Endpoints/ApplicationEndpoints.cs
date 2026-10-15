@@ -34,6 +34,23 @@ public static class ApplicationEndpoints
             }
         });
 
+        group.MapGet("/{id:guid}/review", async Task<IResult> (Guid id, ApplicationPackageService packages, CancellationToken ct) =>
+            await packages.ReviewAsync(id, ct) is { } review ? Results.Ok(review) : Results.NotFound());
+
+        group.MapGet("/{id:guid}/packages", (Guid id, ApplicationPackageService packages, CancellationToken ct) => packages.HistoryAsync(id, ct));
+
+        group.MapPost("/{id:guid}/packages", async Task<IResult> (Guid id, ClaimsPrincipal user, ApplicationPackageService packages, CancellationToken ct) =>
+        {
+            try
+            {
+                return await packages.CreatePackageAsync(id, user.UserId(), ct) is { } package ? Results.Ok(package) : Results.NotFound();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict, title: "Application package is not consistent");
+            }
+        });
+
         group.MapGet("/statuses", () => Enum.GetNames<ApplicationStatus>());
 
         group.MapGet("/follow-ups/due", (ApplicationService service, CancellationToken ct) => service.DueFollowUpsAsync(ct));

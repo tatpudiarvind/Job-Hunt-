@@ -21,7 +21,7 @@ public sealed class DataPortabilityService(string dataDirectory, ILogger<DataPor
     public static readonly IReadOnlySet<string> ExportableFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "candidate.json", "candidate-facts.json", "jobs.json", "applications.json", "approvals.json",
-        "agent-runs.json", "resumes.json", "emails.json", "receipts.json", "audit.json", SettingsFile
+        "agent-runs.json", "resumes.json", "emails.json", "receipts.json", "application-packages.json", "audit.json", "google-oauth.json", SettingsFile
     };
 
     public sealed record ImportResult(IReadOnlyList<string> ImportedFiles, IReadOnlyList<string> SkippedEntries, string BackupDirectory);

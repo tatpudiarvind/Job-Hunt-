@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using ArvindJobHunter.Application.Abstractions;
 using ArvindJobHunter.Domain;
 using ArvindJobHunter.Domain.Entities;
@@ -22,7 +22,8 @@ public sealed class ExecuteApprovedActionCommand(
     IGmailClient gmail,
     ApplicationService applications,
     AuditService audit,
-    ILogger<ExecuteApprovedActionCommand> logger)
+    ILogger<ExecuteApprovedActionCommand> logger,
+    IRepository<ApplicationPackage>? packages = null)
 {
     // Executions never overlap. Otherwise two clicks (or two tabs) with different idempotency keys could both
     // pass the guard before either one consumes the approval, and an email would be sent twice.
@@ -133,6 +134,7 @@ public sealed class ExecuteApprovedActionCommand(
             ?? throw new KeyNotFoundException("Email draft not found.");
         var action = send ? ApprovalActionType.SEND_EMAIL : ApprovalActionType.CREATE_EMAIL_DRAFT;
         guard.EnsureAllowed(approval, action, ApprovalRequest.ComputeHash(draft.PayloadForApproval()), current.Mode);
+        if (send) await EnsurePackageNotStaleAsync(draft, cancellationToken);
 
         var websiteUrl = draft.JobId is { } jobId ? await GetJobUrlAsync(jobId, cancellationToken) : null;
         if (current.Mode != ExecutionMode.LIVE)
@@ -140,9 +142,9 @@ public sealed class ExecuteApprovedActionCommand(
             await drafts.UpsertAsync(draft.MarkApproved(), cancellationToken);
             if (send && draft.JobId is { } simulatedJobId)
             {
-                await MarkApplicationAppliedAsync(simulatedJobId, userId, cancellationToken, $"{current.Mode} mode: application submitted locally.");
+                await MarkOutreachContactedAsync(draft, simulatedJobId, userId, cancellationToken, $"{current.Mode} mode: recruiter outreach recorded locally.");
             }
-            return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, null, websiteUrl, $"{current.Mode} mode: { (send ? "application submitted locally and recorded; Gmail was not contacted." : "email approved and recorded; Gmail was not contacted.") }");
+            return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, null, websiteUrl, $"{current.Mode} mode: { (send ? DryRunSendMessage(draft.Kind) : "email approved and recorded; Gmail was not contacted.") }");
         }
 
         // Point of no return: once the request goes to Gmail the outcome must be recorded, so the browser request's
@@ -169,13 +171,13 @@ public sealed class ExecuteApprovedActionCommand(
             return Receipt(approval, key, current.Mode, ExecutionResult.FAILED, null, websiteUrl, result.Error);
         }
 
-        var message = send ? "Application submitted via Gmail." : "Draft created in Gmail.";
+        var message = send ? LiveSendMessage(draft.Kind) : "Draft created in Gmail.";
         try
         {
             await drafts.UpsertAsync(send ? draft.MarkSent(result.ExternalId!) : draft.MarkCreatedInGmail(result.ExternalId!), CancellationToken.None);
             if (send && draft.JobId is { } sentJobId)
             {
-                await MarkApplicationAppliedAsync(sentJobId, userId, CancellationToken.None, "Application submitted.");
+                await MarkOutreachContactedAsync(draft, sentJobId, userId, CancellationToken.None, "Recruiter outreach sent.");
             }
         }
         catch (Exception ex)
@@ -188,18 +190,47 @@ public sealed class ExecuteApprovedActionCommand(
         return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, result.ExternalId, websiteUrl, message);
     }
 
+    /// <summary>Once a package is frozen, content must not drift before sending; re-freeze to acknowledge changes.</summary>
+    private async Task EnsurePackageNotStaleAsync(EmailDraft draft, CancellationToken cancellationToken)
+    {
+        if (packages is null || draft.JobId is not { } jobId) return;
+        var application = await applications.GetByJobAsync(jobId, cancellationToken);
+        if (application is null) return;
+        var latest = (await packages.ListAsync(cancellationToken)).Where(p => p.ApplicationId == application.Id).MaxBy(p => p.Version);
+        if (latest is null) return;
+        var job = await jobs.GetAsync(jobId, cancellationToken);
+        if (job is null) return;
+        var resume = application.ResumeVersionId is { } r ? await resumes.GetAsync(r, cancellationToken) : null;
+        var cover = application.CoverLetterDraftId is { } c ? await drafts.GetAsync(c, cancellationToken) : null;
+        if (ApplicationPackageService.IsStale(latest, job, resume, cover))
+            throw new ApprovalViolationException($"Application package v{latest.Version} is out of date: the job, resume or cover letter changed after it was frozen. Review and freeze it again before sending.");
+    }
+
     private async Task<string?> GetJobUrlAsync(Guid jobId, CancellationToken cancellationToken)
     {
         var job = await jobs.GetAsync(jobId, cancellationToken);
         return string.IsNullOrWhiteSpace(job?.Url) ? null : job.Url;
     }
 
-    private async Task MarkApplicationAppliedAsync(Guid jobId, Guid userId, CancellationToken cancellationToken, string reason)
+    private static bool IsRecruiter(string kind) => string.Equals(kind, "RECRUITER", StringComparison.OrdinalIgnoreCase);
+
+    private static string DryRunSendMessage(string kind) =>
+        IsRecruiter(kind) ? "recruiter outreach recorded locally; Gmail was not contacted." : "email approved and recorded; Gmail was not contacted.";
+
+    private static string LiveSendMessage(string kind) =>
+        IsRecruiter(kind) ? "Recruiter outreach sent via Gmail." : "Email sent via Gmail.";
+
+    private async Task MarkOutreachContactedAsync(EmailDraft draft, Guid jobId, Guid userId, CancellationToken cancellationToken, string reason)
     {
+        if (!IsRecruiter(draft.Kind))
+        {
+            return;
+        }
+
         var application = await applications.GetByJobAsync(jobId, cancellationToken);
         if (application is not null)
         {
-            await applications.TryAdvanceAsync(application, ApplicationStatus.APPLIED, reason, userId, cancellationToken);
+            await applications.TryAdvanceAsync(application, ApplicationStatus.RECRUITER_CONTACTED, reason, userId, cancellationToken);
         }
     }
 

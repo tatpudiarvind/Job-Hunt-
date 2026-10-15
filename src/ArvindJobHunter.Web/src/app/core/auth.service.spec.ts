@@ -37,11 +37,11 @@ describe('AuthService', () => {
     await pending;
   });
 
-  it('resetPassword posts the new password payload to the reset endpoint', async () => {
-    const pending = service.resetPassword('arvind', 'new-correct-horse-battery-staple');
+  it('resetPassword posts the current and new password payload to the reset endpoint', async () => {
+    const pending = service.resetPassword('arvind', 'correct-horse-battery-staple', 'new-correct-horse-battery-staple');
     const req = http.expectOne(`${environment.apiBaseUrl}/api/auth/reset-password`);
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ username: 'arvind', newPassword: 'new-correct-horse-battery-staple' });
+    expect(req.request.body).toEqual({ username: 'arvind', currentPassword: 'correct-horse-battery-staple', newPassword: 'new-correct-horse-battery-staple' });
     req.flush(null, { status: 204, statusText: 'No Content' });
     await pending;
   });

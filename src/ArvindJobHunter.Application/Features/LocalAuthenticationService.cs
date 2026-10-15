@@ -47,11 +47,11 @@ public sealed class LocalAuthenticationService(IJsonStore<LocalAccountRecord> st
         finally { gate.Release(); }
     }
 
-    public async Task<bool> ResetPasswordAsync(string username, string newPassword, CancellationToken cancellationToken)
+    public async Task<bool> ResetPasswordAsync(string username, string currentPassword, string newPassword, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(username) || !IsAcceptablePassword(newPassword))
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(currentPassword) || !IsAcceptablePassword(newPassword))
         {
-            logger.LogWarning("Password reset rejected: a username and a new password of at least {MinimumLength} characters are required", MinimumPasswordLength);
+            logger.LogWarning("Password reset rejected: a username, the current password, and a new password of at least {MinimumLength} characters are required", MinimumPasswordLength);
             return false;
         }
 
@@ -63,6 +63,12 @@ public sealed class LocalAuthenticationService(IJsonStore<LocalAccountRecord> st
             {
                 // The typed name is not logged: people sometimes type a password into the username box.
                 logger.LogWarning("Password reset rejected: the username does not match the local account");
+                return false;
+            }
+
+            if (!CryptographicOperations.FixedTimeEquals(Convert.FromBase64String(account.PasswordHash), Hash(currentPassword, Convert.FromBase64String(account.Salt))))
+            {
+                logger.LogWarning("Password reset rejected for {Username}: wrong current password", account.Username);
                 return false;
             }
 

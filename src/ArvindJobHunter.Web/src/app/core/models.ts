@@ -21,6 +21,21 @@ export interface Job {
   id: string; title: string; company: string; location: string; source: string; url: string | null; description: string;
   status: 'DISCOVERED' | 'ANALYZED' | 'QUALIFIED' | 'DISMISSED'; createdAt: string; updatedAt: string;
   analysis: JobAnalysis | null; match: JobMatch | null;
+  sponsorship?: SponsorshipEvidence | null; recruiter?: RecruiterContact | null;
+}
+
+export interface SponsorshipEvidence { status: 'UNKNOWN' | 'MENTIONED' | 'EXCLUDED'; matchedPhrase: string | null; source: string; checkedAt: string; }
+export interface RecruiterContact { status: 'NOT_FOUND' | 'USER_PROVIDED' | 'VERIFIED'; name: string | null; email: string | null; source: string | null; recordedAt: string; }
+
+export interface ApplicationPackage {
+  id: string; applicationId: string; jobId: string; version: number; jobSnapshotHash: string;
+  resumeVersionId: string | null; resumeHash: string | null; coverLetterDraftId: string | null; coverLetterHash: string | null;
+  packageHash: string; createdAt: string;
+}
+
+export interface ApplicationReview {
+  application: JobApplication; job: Job; resume: ResumeVersion | null; coverLetter: EmailDraft | null;
+  latestPackage: ApplicationPackage | null; packageIsCurrent: boolean; issues: string[];
 }
 
 export interface ApplicationTransition { from: string | null; to: string; at: string; reason: string; }
@@ -80,7 +95,7 @@ export interface JobSearchPreferences {
   salaryExpectation: string | null;
   workAuthorization: string | null;
 }
-export interface GoogleOAuthSettings { clientId: string; clientSecret: string; redirectUri: string; configured: boolean; }
+export interface GoogleOAuthSettings { clientId: string; redirectUri: string; clientSecretConfigured: boolean; configured: boolean; }
 export interface GoogleStatus { configured: boolean; connected: boolean; accountEmail?: string | null; }
 export interface JobPostingDraft { url: string; title: string | null; company: string | null; location: string | null; description: string; source: string; warnings: string[]; }
 export interface InterviewResource { title: string; url: string; provider: string; kind: 'video' | 'website' | 'search'; why: string | null; }

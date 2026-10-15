@@ -14,6 +14,8 @@ public sealed class ExecuteApprovedActionCommandTests : IDisposable
     private readonly InMemoryRepository<ResumeVersion> resumes = new(r => r.Id);
     private readonly InMemoryRepository<EmailDraft> drafts = new(d => d.Id);
     private readonly InMemoryRepository<JobApplication> applications = new(a => a.Id);
+    private readonly InMemoryRepository<ApplicationPackage> packages = new(p => p.Id);
+    private readonly InMemoryRepository<Job> jobs = new(j => j.Id);
     private readonly InMemoryAuditStore auditStore = new();
     private readonly RecordingResumeDocuments documents = new();
     private readonly FakeGmail gmail = new();
@@ -28,8 +30,8 @@ public sealed class ExecuteApprovedActionCommandTests : IDisposable
         var audit = new AuditService(auditStore, NullLogger<AuditService>.Instance);
         return new ExecuteApprovedActionCommand(
             new ApprovalService(approvals, settings, audit, NullLogger<ApprovalService>.Instance),
-            new ExternalActionGuard(), settings, receipts, resumes, drafts, new InMemoryRepository<Job>(j => j.Id), documents, gmail,
-            new ApplicationService(applications, audit, NullLogger<ApplicationService>.Instance), audit, NullLogger<ExecuteApprovedActionCommand>.Instance);
+            new ExternalActionGuard(), settings, receipts, resumes, drafts, jobs, documents, gmail,
+            new ApplicationService(applications, audit, NullLogger<ApplicationService>.Instance), audit, NullLogger<ExecuteApprovedActionCommand>.Instance, packages);
     }
 
     private async Task<ApprovalRequest> ApprovedAsync(ApprovalActionType action, Guid targetId, string payload, ExecutionMode mode)
@@ -47,9 +49,9 @@ public sealed class ExecuteApprovedActionCommandTests : IDisposable
         return await ApprovedAsync(ApprovalActionType.APPLY_RESUME_CHANGES, version.Id, version.PayloadForApproval(), mode);
     }
 
-    private async Task<ApprovalRequest> SendApprovalAsync()
+    private async Task<ApprovalRequest> SendApprovalAsync(string kind = "RECRUITER", Guid? jobId = null)
     {
-        var draft = EmailDraft.Create(null, "RECRUITER", "recruiter@example.com", "Hello", "Body");
+        var draft = EmailDraft.Create(jobId, kind, "recruiter@example.com", "Hello", "Body");
         await drafts.UpsertAsync(draft, CancellationToken.None);
         return await ApprovedAsync(ApprovalActionType.SEND_EMAIL, draft.Id, draft.PayloadForApproval(), ExecutionMode.LIVE);
     }
@@ -163,6 +165,48 @@ public sealed class ExecuteApprovedActionCommandTests : IDisposable
         Assert.Equal(ApprovalStatus.CONSUMED, await StatusOf(approval));
         await Assert.ThrowsAsync<ApprovalViolationException>(() => Command(ExecutionMode.LIVE).ExecuteAsync(approval.Id, "click-2", LocalUser.Id, CancellationToken.None));
         Assert.Equal(1, gmail.Sends);
+    }
+
+    [Fact]
+    public async Task SendingACoverLetterEmail_DoesNotMarkTheApplicationAsApplied()
+    {
+        var jobId = Guid.NewGuid();
+        var application = JobApplication.Create(jobId)
+            .TransitionTo(ApplicationStatus.MATCHED, "match")
+            .TransitionTo(ApplicationStatus.SHORTLISTED, "shortlist")
+            .TransitionTo(ApplicationStatus.RESUME_PREPARED, "resume")
+            .TransitionTo(ApplicationStatus.AWAITING_APPROVAL, "approval")
+            .TransitionTo(ApplicationStatus.APPROVED, "approved");
+        await applications.UpsertAsync(application, CancellationToken.None);
+        var approval = await SendApprovalAsync("COVER_LETTER", jobId);
+
+        var receipt = await Command(ExecutionMode.LIVE).ExecuteAsync(approval.Id, "send-cover-letter", LocalUser.Id, CancellationToken.None);
+
+        Assert.Equal(ExecutionResult.SUCCESS, receipt.Result);
+        Assert.Equal("Email sent via Gmail.", receipt.Message);
+        var unchanged = await applications.GetAsync(application.Id, CancellationToken.None);
+        Assert.Equal(ApplicationStatus.APPROVED, unchanged!.Status);
+    }
+
+    [Fact]
+    public async Task Sending_IsBlocked_WhenTheFrozenPackageNoLongerMatchesTheContent()
+    {
+        var job = Job.Create("Engineer", "Contoso", "Berlin", "MANUAL", null, "C# role");
+        await jobs.UpsertAsync(job, CancellationToken.None);
+        var cover = EmailDraft.Create(job.Id, "COVER_LETTER", "", "Application", "Hello Contoso.");
+        await drafts.UpsertAsync(cover, CancellationToken.None);
+        var application = JobApplication.Create(job.Id).WithCoverLetter(cover.Id);
+        await applications.UpsertAsync(application, CancellationToken.None);
+        await packages.UpsertAsync(new ApplicationPackage(Guid.NewGuid(), application.Id, job.Id, 1, "", null, null, cover.Id, null,
+            ApplicationPackageService.PackageHash(job, null, cover), LocalUser.Id, DateTimeOffset.UtcNow), CancellationToken.None);
+        await drafts.UpsertAsync(cover.Edit("", "Application", "Edited after freezing, Contoso."), CancellationToken.None);
+        var approval = await SendApprovalAsync("RECRUITER", job.Id);
+
+        var ex = await Assert.ThrowsAsync<ApprovalViolationException>(() => Command(ExecutionMode.LIVE).ExecuteAsync(approval.Id, "stale", LocalUser.Id, CancellationToken.None));
+
+        Assert.Contains("out of date", ex.Message);
+        Assert.Equal(0, gmail.Sends);
+        Assert.Equal(ApprovalStatus.APPROVED, await StatusOf(approval));
     }
 
     [Fact]

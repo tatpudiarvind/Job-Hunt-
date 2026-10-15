@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
 import {
-  AgentRun, ApprovalRequest, AuditEvent, CandidateFact, CandidateProfile, Dashboard, EmailDraft, ExecutionReceipt,
+  AgentRun, ApplicationPackage, ApplicationReview, ApprovalRequest, AuditEvent, CandidateFact, CandidateProfile, Dashboard, EmailDraft, ExecutionReceipt,
 GoogleOAuthSettings, GoogleStatus, InterviewPrepPlan, Job, JobApplication, JobDiscoveryResult, JobPipelineResult, JobPostingDraft, JobSearchPreferences, ResumePreview, ResumeVersion, Settings
 } from './models';
 
@@ -37,12 +37,17 @@ export class ApiService {
   importData(file: File) { const form = new FormData(); form.append('file', file, file.name); return firstValueFrom(this.http.post<{ importedFiles: string[]; skippedEntries: string[]; backupDirectory: string }>(`${environment.apiBaseUrl}/api/data/import`, form)); }
   analyzeJob(id: string) { return this.post<JobPipelineResult>(`/jobs/${id}/analyze`); }
   prepareJob(id: string) { return this.post<JobPipelineResult>(`/jobs/${id}/prepare`); }
-  recruiterEmail(id: string, recipient: string) { return this.post<EmailDraft>(`/jobs/${id}/recruiter-email`, { recipient }); }
+  recruiterEmail(id: string, recipient: string | null) { return this.post<EmailDraft>(`/jobs/${id}/recruiter-email`, { recipient }); }
+  setRecruiterContact(id: string, status: string, name: string | null, email: string | null, source: string | null) {
+    return firstValueFrom(this.http.put<Job>(`${this.base}/jobs/${id}/recruiter-contact`, { status, name, email, source }));
+  }
   dismissJob(id: string) { return this.post<Job>(`/jobs/${id}/dismiss`); }
   deleteJob(id: string) { return this.delete(`/jobs/${id}`); }
 
   applications() { return this.get<JobApplication[]>('/applications'); }
   applicationStatuses() { return this.get<string[]>('/applications/statuses'); }
+  applicationReview(id: string) { return this.get<ApplicationReview>(`/applications/${id}/review`); }
+  createApplicationPackage(id: string) { return this.post<ApplicationPackage>(`/applications/${id}/packages`); }
   transitionApplication(id: string, status: string, reason: string | null) { return this.post<JobApplication>(`/applications/${id}/transition`, { status, reason }); }
   dueFollowUps() { return this.get<JobApplication[]>('/applications/follow-ups/due'); }
   scheduleFollowUp(id: string, dueAt: string, note: string | null) { return firstValueFrom(this.http.put<JobApplication>(`${environment.apiBaseUrl}/api/applications/${id}/follow-up`, { dueAt, note })); }
@@ -72,7 +77,7 @@ export class ApiService {
   jobSearchPreferences() { return this.get<JobSearchPreferences>('/settings/job-search-preferences'); }
   updateJobSearchPreferences(body: { preferredCountries: string[]; linkedInProfileUrl: string | null; preferredRoles: string[]; workMode: string | null; salaryExpectation: string | null; workAuthorization: string | null }) { return this.put<JobSearchPreferences>('/settings/job-search-preferences', body); }
   googleOAuthSettings() { return this.get<GoogleOAuthSettings>('/settings/google-oauth'); }
-  updateGoogleOAuthSettings(body: { clientId: string; clientSecret: string; redirectUri: string }) { return this.put<GoogleOAuthSettings>('/settings/google-oauth', body); }
+  updateGoogleOAuthSettings(body: { clientId: string; clientSecret: string | null; redirectUri: string }) { return this.put<GoogleOAuthSettings>('/settings/google-oauth', body); }
   uploadMasterResume(file: File) { const form = new FormData(); form.append('file', file, file.name); return firstValueFrom(this.http.post<{ masterResumePath: string; fileName: string; size: number }>(`${environment.apiBaseUrl}/api/settings/master-resume`, form)); }
   googleStatus() { return this.get<GoogleStatus>('/integrations/google/status'); }
   googleAuthorizeUrl() { return this.get<{ url: string }>('/integrations/google/authorize'); }

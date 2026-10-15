@@ -4,6 +4,7 @@ using ArvindJobHunter.Api.Auth;
 using ArvindJobHunter.Application.Abstractions;
 using ArvindJobHunter.Application.Features;
 using ArvindJobHunter.Contracts.Api;
+using ArvindJobHunter.Domain.Entities;
 
 namespace ArvindJobHunter.Api.Endpoints;
 
@@ -82,14 +83,38 @@ public static class JobEndpoints
             catch (AgentRunFailedException ex) { return AgentFailed(ex); }
         });
 
-        group.MapPost("/{id:guid}/recruiter-email", async Task<IResult> (Guid id, RecruiterEmailRequest request, ClaimsPrincipal user, AgentOrchestrator orchestrator, CancellationToken ct) =>
+        group.MapPost("/{id:guid}/recruiter-email", async Task<IResult> (Guid id, RecruiterEmailRequest request, ClaimsPrincipal user, AgentOrchestrator orchestrator, JobService jobs, CancellationToken ct) =>
         {
             try
             {
-                return Results.Ok(await orchestrator.DraftRecruiterEmailAsync(id, request.Recipient ?? "", user.UserId(), ct));
+                var recipient = request.Recipient;
+                if (string.IsNullOrWhiteSpace(recipient))
+                {
+                    var job = await jobs.GetAsync(id, ct);
+                    if (job is null) return Results.NotFound();
+                    if (job.Recruiter is not { IsUsable: true } contact)
+                        return Results.ValidationProblem(new Dictionary<string, string[]> { ["recipient"] = ["No recruiter contact is recorded for this job. Add one you found yourself, or enter a recipient."] });
+                    recipient = contact.Email!;
+                }
+
+                return Results.Ok(await orchestrator.DraftRecruiterEmailAsync(id, recipient, user.UserId(), ct));
             }
             catch (KeyNotFoundException) { return Results.NotFound(); }
             catch (AgentRunFailedException ex) { return AgentFailed(ex); }
+        });
+
+        group.MapPut("/{id:guid}/recruiter-contact", async Task<IResult> (Guid id, RecruiterContactRequest request, ClaimsPrincipal user, JobService service, CancellationToken ct) =>
+        {
+            if (!Enum.TryParse<RecruiterContactStatus>(request.Status, true, out var status))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["status"] = [$"Unknown status '{request.Status}'."] });
+            try
+            {
+                return await service.SetRecruiterContactAsync(id, status, request.Name, request.Email, request.Source, user.UserId(), ct) is { } job ? Results.Ok(job) : Results.NotFound();
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { [ex.ParamName ?? "contact"] = [ex.Message.Split(" (Parameter")[0]] });
+            }
         });
 
         group.MapGet("/{id:guid}/interview-prep", async Task<IResult> (Guid id, JobService service, InterviewPrepService prep, CancellationToken ct) =>
@@ -110,6 +135,7 @@ public static class JobEndpoints
             extensions: new Dictionary<string, object?> { ["runId"] = ex.RunId });
 
     public sealed record RecruiterEmailRequest(string? Recipient);
+    public sealed record RecruiterContactRequest(string Status, string? Name, string? Email, string? Source);
     public sealed record ImportJobUrlRequest(string Url);
     public sealed record DiscoverJobsRequest(int? MaxResults);
 }

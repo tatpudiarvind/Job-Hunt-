@@ -209,7 +209,8 @@ public sealed class LoggingAndRegressionTests : IClassFixture<ApiFactory>
         Assert.Equal("llama3.1:8b", settings.GetProperty("llmModel").GetString());
         Assert.True(settings.GetProperty("llmConfigured").GetBoolean());
         Assert.EndsWith("master-My Resume.docx", settings.GetProperty("masterResumePath").GetString());
-        Assert.Contains("upload-test-key", await File.ReadAllTextAsync(Path.Combine(isolated.DataDirectory, "settings.json")));
+        Assert.DoesNotContain("upload-test-key", await File.ReadAllTextAsync(Path.Combine(isolated.DataDirectory, "settings.json")));
+        Assert.DoesNotContain("upload-test-key", await File.ReadAllTextAsync(Path.Combine(isolated.DataDirectory, "secrets.json")));
 
         var analysis = uploadBody.GetProperty("analysis");
         Assert.Equal("Arvind Tatpudi", analysis.GetProperty("name").GetString());

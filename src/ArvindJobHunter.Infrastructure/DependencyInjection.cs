@@ -30,6 +30,8 @@ public static class DependencyInjection
         AddStore<CandidateProfileDocument>(services, dataDirectory, "candidate.json");
         AddStore<LocalAccountRecord>(services, dataDirectory, "account.json");
         AddStore<GoogleTokenDocument>(services, dataDirectory, "google-token.json");
+        AddStore<GoogleOAuthSettingsDocument>(services, dataDirectory, "google-oauth.json");
+        AddStore<SecretStoreDocument>(services, dataDirectory, "secrets.json");
         AddStore<RuntimeSettings>(services, dataDirectory, "settings.json");
         AddStore<JobSearchPreferences>(services, dataDirectory, "job-search-preferences.json");
         AddListRepository<CandidateFact>(services, dataDirectory, "candidate-facts.json", f => f.Id);
@@ -40,14 +42,22 @@ public static class DependencyInjection
         AddListRepository<ResumeVersion>(services, dataDirectory, "resumes.json", r => r.Id);
         AddListRepository<EmailDraft>(services, dataDirectory, "emails.json", e => e.Id);
         AddListRepository<ExecutionReceipt>(services, dataDirectory, "receipts.json", r => r.Id);
+        AddListRepository<ApplicationPackage>(services, dataDirectory, "application-packages.json", p => p.Id);
 
         services.AddSingleton<ICandidateProfileRepository, CandidateProfileRepository>();
         services.AddSingleton<ICacheInvalidatable>(sp => (ICacheInvalidatable)sp.GetRequiredService<ICandidateProfileRepository>());
         services.AddSingleton<ICacheInvalidatable>(sp => (ICacheInvalidatable)sp.GetRequiredService<IAuditStore>());
         services.AddSingleton<ICacheInvalidatable>(sp => (ICacheInvalidatable)sp.GetRequiredService<IRuntimeSettingsProvider>());
         services.AddSingleton(sp => new DataPortabilityService(dataDirectory, sp.GetRequiredService<ILogger<DataPortabilityService>>()));
+        services.AddSingleton<ISecretStore>(sp => new DataProtectionSecretStore(
+            sp.GetRequiredService<IJsonStore<SecretStoreDocument>>(),
+            sp.GetRequiredService<IDataProtectionProvider>(),
+            sp.GetRequiredService<ILogger<DataProtectionSecretStore>>()));
         services.AddSingleton<IRuntimeSettingsProvider>(sp => new JsonRuntimeSettingsProvider(
-            sp.GetRequiredService<IJsonStore<RuntimeSettings>>(), defaultSettings, sp.GetRequiredService<ILogger<JsonRuntimeSettingsProvider>>()));
+            sp.GetRequiredService<IJsonStore<RuntimeSettings>>(),
+            sp.GetRequiredService<ISecretStore>(),
+            defaultSettings,
+            sp.GetRequiredService<ILogger<JsonRuntimeSettingsProvider>>()));
         services.AddSingleton<IJobSearchPreferencesProvider>(sp => new JsonJobSearchPreferencesProvider(
             sp.GetRequiredService<IJsonStore<JobSearchPreferences>>()));
         services.AddSingleton<ICacheInvalidatable>(sp => (ICacheInvalidatable)sp.GetRequiredService<IJobSearchPreferencesProvider>());
@@ -65,6 +75,8 @@ public static class DependencyInjection
         services.AddHttpClient<LeverJobDiscoverySource>(http => http.Timeout = TimeSpan.FromSeconds(20));
         services.AddSingleton<IJobDiscoverySource>(sp => sp.GetRequiredService<GreenhouseJobDiscoverySource>());
         services.AddSingleton<IJobDiscoverySource>(sp => sp.GetRequiredService<LeverJobDiscoverySource>());
+        services.AddHttpClient<ArbeitnowJobDiscoverySource>(http => http.Timeout = TimeSpan.FromSeconds(20));
+        services.AddSingleton<IJobDiscoverySource>(sp => sp.GetRequiredService<ArbeitnowJobDiscoverySource>());
         services.AddSingleton(workerOptions);
         services.AddSingleton<OpenXmlResumeDocumentService>();
         if (workerOptions.Enabled)
@@ -86,7 +98,12 @@ public static class DependencyInjection
             services.AddSingleton<IResumeDocumentService>(sp => sp.GetRequiredService<OpenXmlResumeDocumentService>());
         }
 
-        services.AddSingleton<IGoogleOAuthSettingsProvider>(_ => new JsonGoogleOAuthSettingsProvider(appSettingsPath, googleOptions));
+        services.AddSingleton<IGoogleOAuthSettingsProvider>(sp => new JsonGoogleOAuthSettingsProvider(
+            sp.GetRequiredService<IJsonStore<GoogleOAuthSettingsDocument>>(),
+            sp.GetRequiredService<ISecretStore>(),
+            appSettingsPath,
+            googleOptions,
+            sp.GetRequiredService<ILogger<JsonGoogleOAuthSettingsProvider>>()));
         services.AddHttpClient("GoogleOAuth");
         services.AddSingleton<IGoogleOAuthService>(sp => new GoogleOAuthService(
             sp.GetRequiredService<IHttpClientFactory>(),

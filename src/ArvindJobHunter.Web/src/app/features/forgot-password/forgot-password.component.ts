@@ -36,6 +36,14 @@ import { describeError } from '../../core/auth.interceptor';
                 <input matInput name="username" [(ngModel)]="username" autocomplete="username" required />
               </mat-form-field>
               <mat-form-field appearance="outline">
+                <mat-label>Current password</mat-label>
+                <mat-icon matPrefix class="material-symbols-rounded">lock</mat-icon>
+                <input matInput class="password-input" name="currentPassword" [type]="showCurrentPassword() ? 'text' : 'password'" [(ngModel)]="currentPassword" autocomplete="current-password" required />
+                <button mat-icon-button matSuffix type="button" (click)="showCurrentPassword.set(!showCurrentPassword())" [attr.aria-label]="showCurrentPassword() ? 'Hide password' : 'Show password'">
+                  <mat-icon class="material-symbols-rounded">{{ showCurrentPassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                </button>
+              </mat-form-field>
+              <mat-form-field appearance="outline">
                 <mat-label>New password</mat-label>
                 <mat-icon matPrefix class="material-symbols-rounded">key</mat-icon>
                 <input matInput class="password-input" name="password" [type]="showPassword() ? 'text' : 'password'" [(ngModel)]="password" autocomplete="new-password" required minlength="12" />
@@ -85,10 +93,12 @@ export class ForgotPasswordComponent {
   readonly configured = signal(true);
   readonly busy = signal(false);
   readonly success = signal(false);
+  readonly showCurrentPassword = signal(false);
   readonly showPassword = signal(false);
   readonly showConfirm = signal(false);
   readonly message = signal('');
   username = '';
+  currentPassword = '';
   password = '';
   confirmPassword = '';
 
@@ -108,9 +118,10 @@ export class ForgotPasswordComponent {
     this.success.set(false);
     this.message.set('');
     try {
-      await this.auth.resetPassword(this.username, this.password);
+      await this.auth.resetPassword(this.username, this.currentPassword, this.password);
       this.success.set(true);
       this.message.set('Password updated. Sign in with your new password.');
+      this.currentPassword = '';
       this.password = '';
       this.confirmPassword = '';
       setTimeout(() => void this.router.navigateByUrl('/login'), 800);

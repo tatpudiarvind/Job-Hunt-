@@ -48,6 +48,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler(options => options.StatusCodeSelector = exception =>
     exception is BadHttpRequestException badRequest ? badRequest.StatusCode : StatusCodes.Status500InternalServerError);
 builder.Services.AddApplication();
+builder.Services.AddOpenApi();
 builder.Services.AddInfrastructure(dataDirectory, defaultSettings, appSettingsPath, new GoogleOAuthConfiguration(
     builder.Configuration["Google:ClientId"] ?? "",
     builder.Configuration["Google:ClientSecret"] ?? "",
@@ -121,36 +122,11 @@ app.MapResumeEndpoints();
 app.MapEmailEndpoints();
 app.MapReadModelEndpoints(dataDirectory);
 app.MapClientLogEndpoints();
+if (app.Environment.IsDevelopment()) app.MapOpenApi();
 
-await SeedAsync(app.Services);
 await LogStartupSummaryAsync(app.Services, dataDirectory);
 
 app.Run();
-
-static async Task SeedAsync(IServiceProvider services)
-{
-    using var scope = services.CreateScope();
-    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("ArvindJobHunter.Api.Startup");
-    var profiles = scope.ServiceProvider.GetRequiredService<CandidateProfileService>();
-    if (await profiles.GetCurrentAsync(CancellationToken.None) is null)
-    {
-        await profiles.UpdateAsync(CandidateProfileService.LocalCandidateId, "Arvind Tatpudi", "Senior Software Engineer", "Siemens Healthineers", CancellationToken.None);
-        logger.LogInformation("Seeded the default candidate profile");
-    }
-
-    var facts = scope.ServiceProvider.GetRequiredService<CandidateFactService>();
-    if ((await facts.ListAsync(CancellationToken.None)).Count == 0)
-    {
-        var skills = new[] { "C#", ".NET", "ASP.NET Core", "Microservices", "Azure", "RAG", "LLMs", "Healthcare", "DICOM", "Medical Imaging", "Angular", "WPF", "NUnit", "Integration Testing" };
-        foreach (var skill in skills)
-        {
-            var fact = await facts.AddAsync("SKILL", skill, skill, "Initial user-provided profile", LocalUser.Id, CancellationToken.None);
-            await facts.SetVerificationAsync(fact.Id, true, LocalUser.Id, CancellationToken.None);
-        }
-
-        logger.LogInformation("Seeded {Count} verified skill facts", skills.Length);
-    }
-}
 
 static async Task LogStartupSummaryAsync(IServiceProvider services, string dataDirectory)
 {
