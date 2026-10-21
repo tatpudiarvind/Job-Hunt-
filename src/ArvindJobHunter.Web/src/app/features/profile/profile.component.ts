@@ -13,6 +13,7 @@ import { ApiService } from '../../core/api.service';
 import { CandidateFact, CandidateProfile } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
+import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 import { NotifyService } from '../../shared/notify.service';
 
 const FACT_TYPES = ['SKILL', 'EXPERIENCE', 'EDUCATION', 'CERTIFICATION', 'LANGUAGE', 'ACHIEVEMENT'];
@@ -24,7 +25,7 @@ function blankProfile(): CandidateProfile {
 @Component({
   selector: 'app-profile',
   standalone: true,
-  imports: [FormsModule, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatProgressBarModule, MatTooltipModule, MatButtonToggleModule, PageHeaderComponent],
+  imports: [FormsModule, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatProgressBarModule, MatTooltipModule, MatButtonToggleModule, PageHeaderComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Truth layer" title="Profile & verified facts" icon="person" subtitle="Only verified facts are used for matching and resume tailoring. The agent cannot invent experience you have not recorded here." />
@@ -44,6 +45,8 @@ function blankProfile(): CandidateProfile {
                 <div class="row end"><button mat-flat-button color="primary" type="submit" [disabled]="busy()">Save profile</button></div>
               </form>
             </section>
+          } @else if (!loaded()) {
+            <app-loading-skeleton variant="form" [rows]="3" label="Loading profile" />
           }
           <section class="card">
             <div class="card-title"><mat-icon class="material-symbols-rounded">add_circle</mat-icon>Add a fact</div>
@@ -84,7 +87,10 @@ function blankProfile(): CandidateProfile {
                 <button mat-icon-button matTooltip="Delete" [disabled]="busy()" (click)="remove(f)"><mat-icon class="material-symbols-rounded">delete</mat-icon></button>
               </div>
             </div>
-          } @empty { <div class="empty"><mat-icon class="material-symbols-rounded">fact_check</mat-icon>{{ facts().length ? 'No facts match this filter.' : 'No facts yet — add your skills and experience to the left.' }}</div> }
+          } @empty {
+            @if (!loaded()) { <app-loading-skeleton variant="list" [rows]="4" label="Loading facts" /> }
+            @else { <div class="empty"><mat-icon class="material-symbols-rounded">fact_check</mat-icon>{{ facts().length ? 'No facts match this filter.' : 'No facts yet — add your skills and experience to the left.' }}</div> }
+          }
         </section>
       </div>
     </div>
@@ -108,6 +114,7 @@ export class ProfileComponent {
   readonly facts = signal<CandidateFact[]>([]);
   readonly error = signal('');
   readonly busy = signal(false);
+  readonly loaded = signal(false);
   readonly filter = signal<'ALL' | 'VERIFIED' | 'UNVERIFIED'>('ALL');
   readonly verifiedCount = computed(() => this.facts().filter(f => f.isVerified).length);
   readonly visible = computed(() => { const f = this.filter(); return this.facts().filter(x => f === 'ALL' || (f === 'VERIFIED') === x.isVerified); });
@@ -128,6 +135,7 @@ export class ProfileComponent {
       this.facts.set(f);
     }
     catch (e) { this.error.set(describeError(e)); }
+    finally { this.loaded.set(true); }
   }
 
   saveProfile() { const p = this.profile()!; return this.run(async () => { await this.api.updateProfile({ name: p.name, currentRole: p.currentRole, currentCompany: p.currentCompany || null }); this.notify.success('Profile saved.'); }); }

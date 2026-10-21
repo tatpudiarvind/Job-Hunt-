@@ -14,12 +14,13 @@ import { ApiService } from '../../core/api.service';
 import { CountryProfile, EmailDraft, Job, JobApplication, ResumeVersion } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { StatusChipComponent } from '../../shared/status-chip.component';
+import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 import { NotifyService } from '../../shared/notify.service';
 
 @Component({
   selector: 'app-job-detail',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressBarModule, MatTabsModule, MatExpansionModule, MatTooltipModule, StatusChipComponent],
+  imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressBarModule, MatTabsModule, MatExpansionModule, MatTooltipModule, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <a mat-button routerLink="/jobs" class="back"><mat-icon class="material-symbols-rounded">arrow_back</mat-icon>Jobs</a>
@@ -180,7 +181,7 @@ import { NotifyService } from '../../shared/notify.service';
             </mat-tab>
           }
         </mat-tab-group>
-      } @else if (!error()) { <mat-progress-bar mode="indeterminate" /> }
+      } @else if (!error()) { <app-loading-skeleton variant="detail" [rows]="8" label="Loading job" /> }
     </div>
   `,
   styles: [`

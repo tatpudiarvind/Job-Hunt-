@@ -16,6 +16,7 @@ import { Job, SkillDemandReport } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
+import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 import { NotifyService } from '../../shared/notify.service';
 
 type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
@@ -23,7 +24,7 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
 @Component({
   selector: 'app-jobs',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressBarModule, MatTooltipModule, MatButtonToggleModule, MatExpansionModule, MatPaginatorModule, PageHeaderComponent, StatusChipComponent],
+  imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressBarModule, MatTooltipModule, MatButtonToggleModule, MatExpansionModule, MatPaginatorModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Pipeline" title="Jobs" icon="work" subtitle="Showing only roles in the UK, Europe, Singapore and the UAE that explicitly mention visa sponsorship (change countries in Settings). Discover roles from supported public career sites, then review or start the approval-gated apply workflow.">
@@ -155,7 +156,11 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
 				  </td>
 				</tr>
 			  } @empty {
+				@if (!loaded()) {
+				  <tr><td colspan="8"><app-loading-skeleton variant="table" [rows]="6" [columns]="6" label="Loading jobs" /></td></tr>
+				} @else {
 				<tr><td colspan="8"><div class="empty"><mat-icon class="material-symbols-rounded">work_off</mat-icon>{{ jobs().length ? 'No jobs match this filter.' : 'No jobs yet — discover sponsored roles or add one manually.' }}</div></td></tr>
+				}
 			  }
 			</tbody>
 		  </table>
@@ -190,6 +195,7 @@ export class JobsComponent {
   readonly jobs = signal<Job[]>([]);
   readonly error = signal('');
   readonly busy = signal(false);
+  readonly loaded = signal(false);
   readonly warnings = signal<string[]>([]);
   readonly discoveryNotes = signal<string[]>([]);
   readonly discoverySummary = signal('');
@@ -216,7 +222,7 @@ export class JobsComponent {
   constructor() { void this.load(); }
 
   async load(): Promise<void> {
-    try { this.jobs.set(await this.api.jobs()); } catch (e) { this.error.set(describeError(e)); }
+    try { this.jobs.set(await this.api.jobs()); } catch (e) { this.error.set(describeError(e)); } finally { this.loaded.set(true); }
     try { this.demand.set(await this.api.skillDemand()); } catch { this.demand.set(null); }
   }
 

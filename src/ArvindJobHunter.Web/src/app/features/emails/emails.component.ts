@@ -14,12 +14,13 @@ import { EmailDraft } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
+import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 import { NotifyService } from '../../shared/notify.service';
 
 @Component({
   selector: 'app-emails',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressBarModule, MatExpansionModule, MatTooltipModule, PageHeaderComponent, StatusChipComponent],
+  imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressBarModule, MatExpansionModule, MatTooltipModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Outreach" title="Email drafts" icon="mail" subtitle="Edit freely — editing resets any prior approval. Sending requires approval and explicit execution, and only happens in LIVE mode with Gmail connected." />
@@ -62,7 +63,11 @@ import { NotifyService } from '../../shared/notify.service';
             </form>
           </mat-expansion-panel>
         } @empty {
+          @if (!loaded()) {
+            <app-loading-skeleton variant="list" [rows]="3" label="Loading email drafts" />
+          } @else {
           <div class="card empty"><mat-icon class="material-symbols-rounded">drafts</mat-icon>No drafts yet. Prepare an application or draft a recruiter email from a <a routerLink="/jobs">job</a>.</div>
+          }
         }
       </mat-accordion>
     </div>
@@ -81,10 +86,11 @@ export class EmailsComponent {
   readonly drafts = signal<EmailDraft[]>([]);
   readonly error = signal('');
   readonly busy = signal(false);
+  readonly loaded = signal(false);
 
   constructor() { void this.load(); }
 
-  async load(): Promise<void> { try { this.drafts.set(await this.api.emails()); } catch (e) { this.error.set(describeError(e)); } }
+  async load(): Promise<void> { try { this.drafts.set(await this.api.emails()); } catch (e) { this.error.set(describeError(e)); } finally { this.loaded.set(true); } }
 
   save(e: EmailDraft) { return this.run(async () => { await this.api.updateEmail(e.id, { to: e.to, subject: e.subject, body: e.body }); this.notify.success('Saved.'); }); }
   requestApproval(e: EmailDraft) { return this.run(async () => { await this.api.updateEmail(e.id, { to: e.to, subject: e.subject, body: e.body }); await this.api.requestEmailApproval(e.id); this.notify.info('Approval requested. Review it under Approvals.'); }); }

@@ -3,17 +3,17 @@ import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { ApiService } from '../../core/api.service';
 import { ApprovalRequest, Dashboard, Job, JobApplication, Settings } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
+import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [RouterLink, DatePipe, MatIconModule, MatButtonModule, MatProgressBarModule, PageHeaderComponent, StatusChipComponent],
+  imports: [RouterLink, DatePipe, MatIconModule, MatButtonModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Overview" title="Where things stand" icon="space_dashboard" subtitle="A snapshot of your pipeline and what needs your attention.">
@@ -85,7 +85,7 @@ import { StatusChipComponent } from '../../shared/status-chip.component';
             </ol>
           </section>
         </div>
-      } @else if (!error()) { <mat-progress-bar mode="indeterminate" /> }
+      } @else if (!error()) { <app-loading-skeleton variant="dashboard" label="Loading dashboard" /> }
     </div>
   `,
   styles: [`

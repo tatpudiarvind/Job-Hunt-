@@ -1,5 +1,8 @@
 @use '@angular/material' as mat;
 
+/* PrimeNG styles live in a low-priority cascade layer so Material and app styles keep precedence. */
+@layer primeng;
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0&display=swap');
 
 html {

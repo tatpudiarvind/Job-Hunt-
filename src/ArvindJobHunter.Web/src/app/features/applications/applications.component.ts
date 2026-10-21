@@ -16,12 +16,13 @@ import { ApplicationReview, Job, JobApplication, SubmissionPackage } from '../..
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
+import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 import { NotifyService } from '../../shared/notify.service';
 
 @Component({
   selector: 'app-applications',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatProgressBarModule, MatExpansionModule, MatTooltipModule, MatMenuModule, PageHeaderComponent, StatusChipComponent],
+  imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatProgressBarModule, MatExpansionModule, MatTooltipModule, MatMenuModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Tracking" title="Applications" icon="assignment_turned_in" subtitle="Move applications through your pipeline and schedule follow-up reminders. Status changes are local bookkeeping — they never trigger external actions.">
@@ -146,7 +147,11 @@ import { NotifyService } from '../../shared/notify.service';
             </div>
           </mat-expansion-panel>
         } @empty {
+          @if (!loaded()) {
+            <app-loading-skeleton variant="list" [rows]="4" label="Loading applications" />
+          } @else {
           <div class="card empty"><mat-icon class="material-symbols-rounded">assignment</mat-icon>No applications yet. Prepare an application from a job to start tracking it.</div>
+          }
         }
       </mat-accordion>
     </div>
@@ -171,6 +176,7 @@ export class ApplicationsComponent {
   readonly statuses = signal<string[]>([]);
   readonly error = signal('');
   readonly busy = signal(false);
+  readonly loaded = signal(false);
   readonly due = computed(() => this.applications().filter(a => this.isDue(a)));
   nextStatus: Record<string, string> = {};
   followUpAt: Record<string, string> = {};
@@ -206,7 +212,7 @@ export class ApplicationsComponent {
         if (a.followUpDueAt && !this.followUpAt[a.id]) this.followUpAt[a.id] = this.toLocalInput(a.followUpDueAt);
         if (a.followUpNote && !this.followUpNote[a.id]) this.followUpNote[a.id] = a.followUpNote;
       }
-    } catch (e) { this.error.set(describeError(e)); }
+    } catch (e) { this.error.set(describeError(e)); } finally { this.loaded.set(true); }
   }
 
   transition(app: JobApplication): Promise<void> {

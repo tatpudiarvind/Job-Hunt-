@@ -17,12 +17,13 @@ import { SettingsStateService } from '../../core/settings-state.service';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
+import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 import { NotifyService } from '../../shared/notify.service';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [DecimalPipe, FormsModule, MatExpansionModule, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatProgressBarModule, MatTooltipModule, MatRadioModule, PageHeaderComponent, StatusChipComponent],
+  imports: [DecimalPipe, FormsModule, MatExpansionModule, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatProgressBarModule, MatTooltipModule, MatRadioModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Configuration" title="Settings" icon="settings" subtitle="Control how far the assistant is allowed to go. Changes take effect immediately." />
@@ -332,7 +333,7 @@ import { NotifyService } from '../../shared/notify.service';
             </section>
           </div>
         </div>
-      } @else if (!error()) { <mat-progress-bar mode="indeterminate" /> }
+      } @else if (!error()) { <app-loading-skeleton variant="form" [rows]="5" label="Loading settings" /> }
     </div>
   `,
   styles: [`

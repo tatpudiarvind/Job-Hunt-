@@ -13,11 +13,12 @@ import { AgentRun, AuditEvent } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
+import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 
 @Component({
   selector: 'app-activity',
   standalone: true,
-  imports: [DatePipe, SlicePipe, RouterLink, MatIconModule, MatButtonModule, MatProgressBarModule, MatTabsModule, MatExpansionModule, MatTableModule, MatTooltipModule, PageHeaderComponent, StatusChipComponent],
+  imports: [DatePipe, SlicePipe, RouterLink, MatIconModule, MatButtonModule, MatProgressBarModule, MatTabsModule, MatExpansionModule, MatTableModule, MatTooltipModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Transparency" title="Activity" icon="history" subtitle="Every agent run and every audited action, with tool calls and outcomes.">
@@ -62,7 +63,10 @@ import { StatusChipComponent } from '../../shared/status-chip.component';
                   } @else { <span class="muted small">No tool calls recorded.</span> }
                 </div>
               </mat-expansion-panel>
-            } @empty { <div class="card empty"><mat-icon class="material-symbols-rounded">smart_toy</mat-icon>No agent runs yet. Analyze a job to start one.</div> }
+            } @empty {
+              @if (!loaded()) { <app-loading-skeleton variant="list" [rows]="5" label="Loading agent runs" /> }
+              @else { <div class="card empty"><mat-icon class="material-symbols-rounded">smart_toy</mat-icon>No agent runs yet. Analyze a job to start one.</div> }
+            }
           </mat-accordion>
         </mat-tab>
 
@@ -80,7 +84,10 @@ import { StatusChipComponent } from '../../shared/status-chip.component';
                   }
                 </div>
               </div>
-            } @empty { <div class="empty"><mat-icon class="material-symbols-rounded">receipt_long</mat-icon>No audit events yet.</div> }
+            } @empty {
+              @if (!loaded()) { <app-loading-skeleton variant="table" [rows]="6" [columns]="3" label="Loading audit log" /> }
+              @else { <div class="empty"><mat-icon class="material-symbols-rounded">receipt_long</mat-icon>No audit events yet.</div> }
+            }
           </section>
         </mat-tab>
       </mat-tab-group>
@@ -104,6 +111,7 @@ export class ActivityComponent {
   readonly audit = signal<AuditEvent[]>([]);
   readonly error = signal('');
   readonly busy = signal(false);
+  readonly loaded = signal(false);
   readonly callCols = ['ok', 'tool', 'input', 'output', 'ms'];
 
   constructor() { void this.load(); }
@@ -113,6 +121,6 @@ export class ActivityComponent {
     try {
       const [runs, audit] = await Promise.all([this.api.agentRuns(), this.api.auditLogs()]);
       this.runs.set(runs); this.audit.set(audit);
-    } catch (e) { this.error.set(describeError(e)); } finally { this.busy.set(false); }
+    } catch (e) { this.error.set(describeError(e)); } finally { this.busy.set(false); this.loaded.set(true); }
   }
 }

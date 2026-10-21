@@ -11,12 +11,13 @@ import { ApprovalRequest, ExecutionReceipt } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
+import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 import { NotifyService } from '../../shared/notify.service';
 
 @Component({
   selector: 'app-approvals',
   standalone: true,
-  imports: [DatePipe, SlicePipe, MatIconModule, MatButtonModule, MatProgressBarModule, MatTooltipModule, MatTabsModule, MatBadgeModule, PageHeaderComponent, StatusChipComponent],
+  imports: [DatePipe, SlicePipe, MatIconModule, MatButtonModule, MatProgressBarModule, MatTooltipModule, MatTabsModule, MatBadgeModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Human in the loop" title="Approvals" icon="fact_check" subtitle="Nothing leaves this machine until you approve it here and then explicitly execute it. Each approval is bound to the exact content you reviewed.">
@@ -45,7 +46,10 @@ import { NotifyService } from '../../shared/notify.service';
                   </div>
                 </div>
               </section>
-            } @empty { <div class="card empty"><mat-icon class="material-symbols-rounded">task_alt</mat-icon>No pending approvals.</div> }
+            } @empty {
+              @if (!loaded()) { <app-loading-skeleton variant="cards" [rows]="2" label="Loading approvals" /> }
+              @else { <div class="card empty"><mat-icon class="material-symbols-rounded">task_alt</mat-icon>No pending approvals.</div> }
+            }
           </div>
         </mat-tab>
 
@@ -115,6 +119,7 @@ export class ApprovalsComponent {
   readonly receipts = signal<ExecutionReceipt[]>([]);
   readonly error = signal('');
   readonly busy = signal(false);
+  readonly loaded = signal(false);
   readonly pending = computed(() => this.approvals().filter(a => a.status === 'PENDING'));
   readonly approved = computed(() => this.approvals().filter(a => a.status === 'APPROVED'));
   readonly history = computed(() => this.approvals().filter(a => a.status !== 'PENDING' && a.status !== 'APPROVED'));
@@ -125,7 +130,7 @@ export class ApprovalsComponent {
     try {
       const [approvals, receipts] = await Promise.all([this.api.approvals(), this.api.receipts()]);
       this.approvals.set(approvals); this.receipts.set(receipts);
-    } catch (e) { this.error.set(describeError(e)); }
+    } catch (e) { this.error.set(describeError(e)); } finally { this.loaded.set(true); }
   }
 
   approve(a: ApprovalRequest): Promise<void> { return this.run(async () => { await this.api.approve(a.id, null); this.notify.success('Approved. It will not run until you click Execute.'); }); }
