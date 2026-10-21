@@ -16,6 +16,13 @@ The goals of this documentation set are to:
 
 ## Documentation Structure
 
+## 0. Getting Started
+
+- [USER_GUIDE.md](USER_GUIDE.md)  
+  First-time user guide: setup, profile, jobs, approvals, browser auto-apply, follow-ups and troubleshooting.
+
+---
+
 ## 1. Product and Platform Overview
 
 - [architecture.md](architecture.md)  
