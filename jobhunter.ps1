@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-	Starts or stops the Job Hunter application (API + Angular frontend).
+	Starts or stops the Job Hunter application (Worker + API + Angular frontend).
 .EXAMPLE
 	.\jobhunter.ps1 start
 	.\jobhunter.ps1 stop
@@ -25,7 +25,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $root    = $PSScriptRoot
 $apiDir  = Join-Path $root 'src\ArvindJobHunter.Api'
+$workerDir = Join-Path $root 'src\ArvindJobHunter.Worker'
 $webDir  = Join-Path $root 'src\ArvindJobHunter.Web'
+$workerPort = 5310
 $apiPort = 5228
 $webPort = 4200
 $appUrl  = "http://localhost:$webPort"
@@ -97,6 +99,12 @@ function Stop-OnPort([int]$port, [string]$name) {
 function Start-App {
 	Write-Host "`nStarting Job Hunter" -ForegroundColor Cyan
 
+	if (Get-ListeningPid $workerPort) { Write-Host "  [--] Worker already running on port $workerPort" -ForegroundColor DarkGray }
+	else {
+		Write-Host "  Launching Worker..."
+		Start-Process powershell.exe -WorkingDirectory $workerDir -ArgumentList '-NoLogo', '-NoProfile', '-Command', "`$Host.UI.RawUI.WindowTitle = 'Job Hunter - Worker'; dotnet run"
+	}
+
 	if (Get-ListeningPid $apiPort) { Write-Host "  [--] API already running on port $apiPort" -ForegroundColor DarkGray }
 	else {
 		Write-Host "  Launching API..."
@@ -113,10 +121,11 @@ function Start-App {
 		Start-Process powershell.exe -WorkingDirectory $webDir -ArgumentList '-NoLogo', '-NoProfile', '-Command', "`$Host.UI.RawUI.WindowTitle = 'Job Hunter - Web'; npx ng serve"
 	}
 
+	$workerOk = Wait-ForPort $workerPort 'Worker'
 	$apiOk = Wait-ForPort $apiPort 'API'
 	$webOk = Wait-ForPort $webPort 'Frontend'
 
-	if ($apiOk -and $webOk) {
+	if ($workerOk -and $apiOk -and $webOk) {
 		Write-Host "`nJob Hunter is running at $appUrl" -ForegroundColor Green
 		if (-not $NoBrowser) { Open-App }
 	}
@@ -127,12 +136,13 @@ function Stop-App {
 	Write-Host "`nStopping Job Hunter" -ForegroundColor Cyan
 	Stop-OnPort $webPort 'Frontend'
 	Stop-OnPort $apiPort 'API'
+	Stop-OnPort $workerPort 'Worker'
 	Write-Host ""
 }
 
 function Show-Status {
 	Write-Host "`nJob Hunter status" -ForegroundColor Cyan
-	foreach ($svc in @(@{ Name = 'API'; Port = $apiPort }, @{ Name = 'Frontend'; Port = $webPort })) {
+	foreach ($svc in @(@{ Name = 'Worker'; Port = $workerPort }, @{ Name = 'API'; Port = $apiPort }, @{ Name = 'Frontend'; Port = $webPort })) {
 		$procId = Get-ListeningPid $svc.Port
 		if ($procId) { Write-Host "  [OK] $($svc.Name) running on port $($svc.Port) (PID $procId)" -ForegroundColor Green }
 		else         { Write-Host "  [--] $($svc.Name) not running" -ForegroundColor DarkGray }
@@ -143,7 +153,7 @@ function Show-Status {
 switch ($Command) {
 	'start'   { Start-App }
 	'stop'    { Stop-App }
-	'restart' { Stop-App; Start-Sleep -Seconds 1; Start-App }
+	'restart' { Stop-App; Start-Sleep -Seconds 2; Start-App }
 	'status'  { Show-Status }
 	'browser' { Set-BrowserPreference $Browser }
 }
