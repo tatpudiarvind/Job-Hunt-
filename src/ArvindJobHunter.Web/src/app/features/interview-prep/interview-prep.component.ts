@@ -92,7 +92,7 @@ export class InterviewPrepComponent {
   @Input() set id(value: string | undefined) { this.routeId = value ?? null; if (value) void this.select(value); }
 
   constructor() {
-    this.api.jobs().then(jobs => {
+    this.api.jobs(true).then(jobs => {
       const usable = jobs.filter(j => j.status !== 'DISMISSED');
       this.jobs.set(usable);
       if (!this.routeId && usable.length === 1) void this.select(usable[0].id);

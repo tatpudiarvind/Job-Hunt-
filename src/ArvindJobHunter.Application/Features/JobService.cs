@@ -39,6 +39,17 @@ public sealed class JobService(IRepository<Job> jobs, IRepository<JobApplication
         return updated;
     }
 
+    public async Task<Job?> SetCountryAsync(Guid id, string? countryCode, Guid userId, CancellationToken cancellationToken)
+    {
+        var job = await jobs.GetAsync(id, cancellationToken);
+        if (job is null) return null;
+        var updated = job.WithCountry(countryCode);
+        await jobs.UpsertAsync(updated, cancellationToken);
+        logger.LogInformation("Job {JobId} country set to {Country}", id, updated.CountryCode ?? "(none)");
+        await audit.RecordAsync(userId, "JOB_COUNTRY_SET", "Job", id.ToString(), "SUCCESS", updated.CountryCode, cancellationToken);
+        return updated;
+    }
+
     public async Task<Job?> DismissAsync(Guid id, Guid userId, CancellationToken cancellationToken)
     {
         var job = await jobs.GetAsync(id, cancellationToken);

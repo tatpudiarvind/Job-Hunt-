@@ -65,7 +65,11 @@ import { StatusChipComponent } from '../../shared/status-chip.component';
             @for (f of dueFollowUps(); track f.id) {
               <div class="item">
                 <div class="row between"><a class="title" [routerLink]="['/jobs', f.jobId]">{{ jobTitle(f.jobId) }}</a><app-status-chip [status]="f.status" /></div>
-                <span class="muted small">due {{ f.followUpDueAt | date:'short' }}@if (f.followUpNote) { · {{ f.followUpNote }}}</span>
+                <div class="row between">
+                  <span class="muted small">due {{ f.followUpDueAt | date:'short' }}@if (f.followUpNote) { · {{ f.followUpNote }}}</span>
+                  <button mat-button [disabled]="drafting() === f.id" (click)="draftFollowUp(f)">Draft email</button>
+                </div>
+                @if (drafted() === f.id) { <span class="small">Draft created. <a routerLink="/emails">Review and approve it</a>.</span> }
               </div>
             } @empty { <div class="empty"><mat-icon class="material-symbols-rounded">notifications_off</mat-icon>No follow-ups due.</div> }
             <div class="row end mt"><a mat-button routerLink="/applications">Manage applications<mat-icon iconPositionEnd class="material-symbols-rounded">arrow_forward</mat-icon></a></div>
@@ -98,12 +102,21 @@ export class DashboardComponent {
   readonly dueFollowUps = signal<JobApplication[]>([]);
   readonly settings = signal<Settings | null>(null);
   readonly error = signal('');
+  readonly drafting = signal<string | null>(null);
+  readonly drafted = signal<string | null>(null);
   private jobs: Job[] = [];
+
+  async draftFollowUp(app: JobApplication): Promise<void> {
+    this.drafting.set(app.id);
+    try { await this.api.draftFollowUpEmail(app.id); this.drafted.set(app.id); }
+    catch (e) { this.error.set(describeError(e)); }
+    finally { this.drafting.set(null); }
+  }
 
   jobTitle(jobId: string): string { const j = this.jobs.find(x => x.id === jobId); return j ? `${j.title} · ${j.company}` : jobId; }
 
   constructor() {
-    Promise.all([this.api.dashboard(), this.api.approvals(), this.api.jobs(), this.api.dueFollowUps()])
+    Promise.all([this.api.dashboard(), this.api.approvals(), this.api.jobs(true), this.api.dueFollowUps()])
       .then(([d, approvals, jobs, due]) => {
         this.dashboard.set(d);
         this.jobs = jobs;

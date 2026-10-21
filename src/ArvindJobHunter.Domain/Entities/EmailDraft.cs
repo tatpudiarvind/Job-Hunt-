@@ -11,7 +11,10 @@ public sealed record EmailDraft(
     Guid? ApprovalId,
     string? ExternalId,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt)
+    DateTimeOffset UpdatedAt,
+    string? DocumentPath = null,
+    string? PdfPath = null,
+    string? TemplatePath = null)
 {
     public static EmailDraft Create(Guid? jobId, string kind, string to, string subject, string body)
     {
@@ -23,8 +26,16 @@ public sealed record EmailDraft(
 
     public string PayloadForApproval() => $"{To}|{Subject}|{Body}";
 
+    /// <summary>Binds the letter text and the template it will be formatted with.</summary>
+    public string DocumentPayloadForApproval() => $"COVER_LETTER_DOCUMENT|{Subject}|{Body}|{TemplatePath}";
+
+    public EmailDraft WithTemplate(string? templatePath) => this with { TemplatePath = templatePath, UpdatedAt = DateTimeOffset.UtcNow };
+
     public EmailDraft Edit(string to, string subject, string body) =>
-        this with { To = to.Trim(), Subject = subject.Trim(), Body = body.Trim(), Status = EmailDraftStatus.DRAFT, ApprovalId = null, UpdatedAt = DateTimeOffset.UtcNow };
+        this with { To = to.Trim(), Subject = subject.Trim(), Body = body.Trim(), Status = EmailDraftStatus.DRAFT, ApprovalId = null, DocumentPath = null, PdfPath = null, UpdatedAt = DateTimeOffset.UtcNow };
+
+    public EmailDraft WithDocument(string documentPath, string? pdfPath) =>
+        this with { DocumentPath = documentPath, PdfPath = pdfPath, UpdatedAt = DateTimeOffset.UtcNow };
 
     public EmailDraft WithApproval(Guid approvalId) => this with { ApprovalId = approvalId, UpdatedAt = DateTimeOffset.UtcNow };
 

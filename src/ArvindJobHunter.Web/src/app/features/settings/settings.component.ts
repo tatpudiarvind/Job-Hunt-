@@ -12,7 +12,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatRadioModule } from '@angular/material/radio';
 import { ApiService } from '../../core/api.service';
-import { GoogleOAuthSettings, GoogleStatus, JobSearchPreferences, Settings } from '../../core/models';
+import { GoogleOAuthSettings, GoogleStatus, JobSearchPreferences, Settings, SiteSetting } from '../../core/models';
 import { SettingsStateService } from '../../core/settings-state.service';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
@@ -31,6 +31,33 @@ import { NotifyService } from '../../shared/notify.service';
       @if (error()) { <div class="alert error"><mat-icon class="material-symbols-rounded">error</mat-icon><span>{{ error() }}</span></div> }
 
       @if (settings(); as s) {
+        <section class="card stack">
+          <div class="card-title"><span class="row gap-sm"><mat-icon class="material-symbols-rounded">open_in_browser</mat-icon>Browser auto-apply sites</span></div>
+          <span class="muted small">Sites the visible browser may submit on (after your approval), with a daily cap. Log in, MFA and CAPTCHA are always done by you.</span>
+          @for (site of sites(); track site.adapter) {
+            <div class="row">
+              <label class="row grow"><input type="checkbox" [(ngModel)]="site.enabled" [name]="'site-' + site.adapter" /> <b>{{ site.adapter }}</b> <span class="muted small">{{ site.submittedToday }} submitted today</span></label>
+              <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Daily cap</mat-label><input matInput type="number" min="0" max="100" [(ngModel)]="site.dailyCap" [name]="'cap-' + site.adapter" /></mat-form-field>
+            </div>
+          }
+          <div class="row"><button mat-flat-button color="primary" type="button" [disabled]="busy()" (click)="saveSites()">Save sites</button></div>
+        </section>
+        <section class="card stack">
+          <div class="card-title"><span class="row gap-sm"><mat-icon class="material-symbols-rounded">description</mat-icon>Resume library (ResumeNow)</span></div>
+          <span class="muted small">Opens ResumeNow in the browser window. Edit and download your PDF there yourself, then import it here so auto-apply can pick it by keyword.</span>
+          <div class="row wrap">
+            <button mat-stroked-button type="button" [disabled]="busy()" (click)="openResumeNow()"><mat-icon class="material-symbols-rounded">open_in_browser</mat-icon>Open ResumeNow</button>
+            <button mat-button type="button" [disabled]="busy()" (click)="loadDownloads()">Refresh downloads</button>
+          </div>
+          @for (d of downloads(); track d.path) {
+            <div class="row wrap">
+              <span class="grow small">{{ d.name }}</span>
+              <input class="kw" placeholder="Keywords, comma separated" [(ngModel)]="downloadKeywords[d.path]" [name]="'kw-' + d.name" />
+              <button mat-stroked-button type="button" [disabled]="busy()" (click)="importDownload(d.path)">Import</button>
+            </div>
+          }
+          @for (r of library(); track r.path) { <span class="small"><b>{{ r.label }}</b> · {{ r.keywords.join(', ') || 'no keywords' }}</span> }
+        </section>
         <div class="grid-2">
           <section class="card">
             <div class="card-title between">
@@ -193,6 +220,9 @@ import { NotifyService } from '../../shared/notify.service';
                 <span class="muted small mono">{{ s.masterResumePath || 'No path configured' }}</span>
               </div>
             </div>
+            @if (s.masterResumeWarning) {
+              <div class="alert warn mt"><mat-icon class="material-symbols-rounded">warning</mat-icon><span>{{ s.masterResumeWarning }}</span></div>
+            }
 
             <div class="dropzone mt" [class.drag]="dragging()" (dragover)="onDragOver($event)" (dragleave)="dragging.set(false)" (drop)="onDrop($event)" (click)="resumeInput.click()">
               <input #resumeInput type="file" accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden (change)="onResumeFile($event)" />
@@ -204,9 +234,23 @@ import { NotifyService } from '../../shared/notify.service';
               }
             </div>
             <div class="row end mt">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Use for country</mat-label>
+                <mat-select [(ngModel)]="resumeCountry">
+                  <mat-option value="">All countries (master)</mat-option>
+                  @for (c of resumeCountryOptions; track c.code) { <mat-option [value]="c.code">{{ c.name }}</mat-option> }
+                </mat-select>
+              </mat-form-field>
               @if (resumeFile) { <button mat-button type="button" [disabled]="busy()" (click)="resumeFile = null">Clear</button> }
               <button mat-flat-button color="primary" type="button" [disabled]="busy() || !resumeFile" (click)="uploadResume()"><mat-icon class="material-symbols-rounded">cloud_upload</mat-icon>Upload resume</button>
             </div>
+            @if (countryResumes(s).length) {
+              <h4 class="mt">Country-specific resumes</h4>
+              @for (entry of countryResumes(s); track entry[0]) {
+                <div class="row"><b>{{ entry[0] }}</b><span class="muted small">{{ entry[1] }}</span>
+                  <button mat-button type="button" [disabled]="busy()" (click)="removeCountryResume(entry[0])">Remove</button></div>
+              }
+            }
 
             <mat-expansion-panel class="mt advanced">
               <mat-expansion-panel-header><mat-panel-title>Use an existing file path instead</mat-panel-title></mat-expansion-panel-header>
@@ -314,6 +358,7 @@ import { NotifyService } from '../../shared/notify.service';
     .dropzone:hover, .dropzone.drag { border-color: var(--ajh-primary); background: var(--ajh-primary-soft); }
     .dropzone mat-icon { font-size: 2rem; width: 2rem; height: 2rem; color: var(--ajh-primary); }
     .advanced { box-shadow: none; border: 1px solid var(--ajh-border); border-radius: 10px !important; }
+    .kw { padding: .4rem .6rem; border: 1px solid var(--ajh-border); border-radius: 8px; min-width: 14rem; background: transparent; color: inherit; }
   `]
 })
 export class SettingsComponent {
@@ -332,7 +377,7 @@ export class SettingsComponent {
   readonly countryOptions = [
     'United Kingdom', 'Germany', 'Netherlands', 'Ireland', 'France', 'Belgium', 'Luxembourg', 'Switzerland',
     'Sweden', 'Norway', 'Denmark', 'Finland', 'Iceland', 'Austria', 'Spain', 'Portugal', 'Italy', 'Malta', 'Greece', 'Cyprus', 'Poland', 'Slovakia', 'Bulgaria', 'Croatia', 'Slovenia', 'Serbia', 'Estonia', 'Latvia', 'Lithuania',
-    'Czech Republic', 'Hungary', 'Romania', 'Other European Countries'
+    'Czech Republic', 'Hungary', 'Romania', 'Other European Countries', 'Singapore', 'United Arab Emirates'
   ];
   readonly workModeOptions = ['Remote', 'Hybrid', 'Onsite', 'Flexible'];
   form = { mode: 'DEMO', llmProvider: 'Demo', llmDisplayName: 'Demo', llmBaseUrl: 'https://api.openai.com/v1/', llmApiKey: '', llmModel: 'gpt-4o-mini', masterResumePath: '' };
@@ -343,6 +388,24 @@ export class SettingsComponent {
   readonly dragging = signal(false);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+
+  readonly sites = signal<SiteSetting[]>([]);
+  readonly downloads = signal<{ path: string; name: string }[]>([]);
+  readonly library = signal<{ path: string; label: string; keywords: string[] }[]>([]);
+  downloadKeywords: Record<string, string> = {};
+  openResumeNow(): Promise<void> {
+    return this.run(async () => { await this.api.openInBrowser('https://www.resume-now.com/'); this.notify.info('ResumeNow opened in the browser window.'); });
+  }
+  loadDownloads(): Promise<void> {
+    return this.run(async () => { this.downloads.set(await this.api.browserDownloads()); this.library.set(await this.api.resumeLibrary()); });
+  }
+  importDownload(path: string): Promise<void> {
+    const keywords = (this.downloadKeywords[path] ?? '').split(',').map(k => k.trim()).filter(k => k);
+    return this.run(async () => { await this.api.importDownload(path, null, keywords); this.library.set(await this.api.resumeLibrary()); this.notify.success('Resume added to the library.'); });
+  }
+  saveSites(): Promise<void> {
+    return this.run(async () => { this.sites.set(await this.api.updateSites(this.sites().map(x => ({ adapter: x.adapter, enabled: x.enabled, dailyCap: Number(x.dailyCap) })))); this.notify.success('Site settings saved.'); });
+  }
 
   constructor() { void this.load(); this.handleOAuthRedirect(); }
 
@@ -366,6 +429,7 @@ export class SettingsComponent {
         this.api.googleOAuthSettings().catch(() => ({ clientId: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback', clientSecretConfigured: false, configured: false }) as GoogleOAuthSettings)
       ]);
       this.settings.set(s); this.settingsState.update(s); this.preferences.set(p); this.google.set(g);
+      this.sites.set(await this.api.sites().catch(() => []));
       this.googleForm = { clientId: go.clientId, clientSecret: '', redirectUri: go.redirectUri, clientSecretConfigured: go.clientSecretConfigured, configured: go.configured };
       this.form = { mode: s.mode, llmProvider: s.llmProvider, llmDisplayName: s.llmDisplayName, llmBaseUrl: s.llmBaseUrl, llmApiKey: '', llmModel: s.llmModel, masterResumePath: s.masterResumePath };
       this.jobSearchForm = {
@@ -439,12 +503,26 @@ export class SettingsComponent {
     if (file && !name.endsWith('.docx') && !name.endsWith('.pdf')) { this.notify.error('Please choose a .docx Word document or a .pdf file.'); return; }
     this.resumeFile = file;
   }
+  resumeCountry = '';
+  readonly resumeCountryOptions = [
+    { code: 'US', name: 'United States' }, { code: 'CA', name: 'Canada' }, { code: 'GB', name: 'United Kingdom' }, { code: 'IE', name: 'Ireland' },
+    { code: 'DE', name: 'Germany' },
+    { code: 'AE', name: 'United Arab Emirates' }, { code: 'SG', name: 'Singapore' }, { code: 'IN', name: 'India' }];
+  countryResumes(s: Settings) { return Object.entries(s.countryResumePaths ?? {}); }
+  removeCountryResume(country: string) {
+    return this.run(async () => {
+      await this.api.removeCountryResume(country);
+      this.settings.set(await this.api.settings());
+      this.notify.success(`Removed the ${country} resume.`);
+    });
+  }
   uploadResume() {
     if (!this.resumeFile) return;
     return this.run(async () => {
-      const result = await this.api.uploadMasterResume(this.resumeFile!);
+      const result = await this.api.uploadMasterResume(this.resumeFile!, this.resumeCountry || undefined);
       this.resumeFile = null;
-      this.notify.success(`Master resume uploaded: ${result.fileName}.`);
+      this.settings.set(await this.api.settings());
+      this.notify.success(`${this.resumeCountry ? this.resumeCountry + ' resume' : 'Master resume'} uploaded: ${result.fileName}.`);
     });
   }
 

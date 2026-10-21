@@ -18,6 +18,17 @@ import { ResumePreview } from '../core/models';
         <span class="chip">{{ data.status }}</span>
         <span class="muted small">Paragraphs: {{ data.paragraphs.length }}</span>
       </div>
+      @if (data.templateFidelity; as f) {
+        @if (f.templatePreserved) {
+          <div class="alert info mt"><mat-icon class="material-symbols-rounded">check_circle</mat-icon><span>Template preserved ({{ f.tailoredPageEstimate }} page(s)).</span></div>
+        } @else {
+          <div class="alert warn mt"><mat-icon class="material-symbols-rounded">warning</mat-icon>
+            <div><b>Template check</b>
+              <ul class="issues">@for (issue of f.issues; track issue) { <li>{{ issue }}</li> }</ul>
+            </div>
+          </div>
+        }
+      }
       <div class="preview mt">
         @for (p of data.paragraphs; track p.index) {
           <p class="para" [class.style-heading]="p.style && p.style !== 'Normal'">
@@ -39,6 +50,7 @@ import { ResumePreview } from '../core/models';
     .preview { max-height: min(70vh, 720px); overflow: auto; border: 1px solid var(--ajh-border); border-radius: 12px; padding: 1rem; background: var(--ajh-surface); }
     .para { margin: 0 0 .75rem; white-space: pre-wrap; line-height: 1.6; }
     .para.style-heading { font-weight: 600; }
+    .issues { margin: .25rem 0 0; padding-left: 1.1rem; }
   `]
 })
 export class ResumePreviewDialogComponent {

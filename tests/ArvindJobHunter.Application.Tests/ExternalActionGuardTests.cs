@@ -51,10 +51,9 @@ public sealed class ExternalActionGuardTests
     }
 
     [Fact]
-    public void Blocks_SubmitApplication_InLive()
+    public void Allows_SubmitApplication_InLive_SiteChecksAreSeparate()
     {
         var approval = Approved(ApprovalActionType.SUBMIT_APPLICATION);
-        var ex = Assert.Throws<ApprovalViolationException>(() => guard.EnsureAllowed(approval, ApprovalActionType.SUBMIT_APPLICATION, approval.PayloadHash, ExecutionMode.LIVE));
-        Assert.Contains("not enabled", ex.Message);
+        guard.EnsureAllowed(approval, ApprovalActionType.SUBMIT_APPLICATION, approval.PayloadHash, ExecutionMode.LIVE);
     }
 }

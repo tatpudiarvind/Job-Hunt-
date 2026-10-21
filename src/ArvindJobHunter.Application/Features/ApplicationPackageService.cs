@@ -63,6 +63,8 @@ public sealed class ApplicationPackageService(
             throw new InvalidOperationException("Package cannot be created: " + string.Join(" ", review.Issues));
         if (review.PackageIsCurrent && review.LatestPackage is not null) return review.LatestPackage;
 
+        var resumeFile = UploadFile(review.Resume?.PdfPath, review.Resume?.OutputPath);
+        var coverFile = UploadFile(review.CoverLetter?.PdfPath, review.CoverLetter?.DocumentPath);
         var package = new ApplicationPackage(
             Guid.NewGuid(),
             review.Application.Id,
@@ -75,7 +77,11 @@ public sealed class ApplicationPackageService(
             review.CoverLetter is null ? null : Hash(review.CoverLetter.PayloadForApproval()),
             PackageHash(review.Job, review.Resume, review.CoverLetter),
             userId,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            resumeFile,
+            resumeFile is null ? null : FileHash(resumeFile),
+            coverFile,
+            coverFile is null ? null : FileHash(coverFile));
 
         await packages.UpsertAsync(package, cancellationToken);
         await audit.RecordAsync(userId, "APPLICATION_PACKAGE_CREATED", "Application", applicationId.ToString(), "SUCCESS",
@@ -133,4 +139,32 @@ public sealed class ApplicationPackageService(
         Hash($"{JobSnapshot(job)}\n--resume:{resume?.Id}:{resume?.PayloadForApproval()}\n--cover:{cover?.Id}:{cover?.PayloadForApproval()}");
 
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    /// <summary>The file a browser should upload: the PDF when present, otherwise the DOCX.</summary>
+    public static string? UploadFile(string? pdfPath, string? docxPath) =>
+        !string.IsNullOrWhiteSpace(pdfPath) && File.Exists(pdfPath) ? pdfPath
+        : !string.IsNullOrWhiteSpace(docxPath) && File.Exists(docxPath) ? docxPath : null;
+
+    public static string FileHash(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+    }
+
+    /// <summary>Problems that make the frozen upload files unsafe to submit (missing or modified since freezing).</summary>
+    public static IReadOnlyList<string> VerifyFiles(ApplicationPackage package)
+    {
+        var issues = new List<string>();
+        Check("resume", package.ResumeFilePath, package.ResumeFileSha256);
+        Check("cover letter", package.CoverLetterFilePath, package.CoverLetterFileSha256);
+        if (package.ResumeVersionId is not null && package.ResumeFilePath is null) issues.Add("No generated resume file was frozen into the package.");
+        return issues;
+
+        void Check(string label, string? path, string? sha)
+        {
+            if (path is null) return;
+            if (!File.Exists(path)) issues.Add($"The {label} file {Path.GetFileName(path)} no longer exists.");
+            else if (!string.Equals(FileHash(path), sha, StringComparison.OrdinalIgnoreCase)) issues.Add($"The {label} file {Path.GetFileName(path)} changed after the package was frozen.");
+        }
+    }
 }

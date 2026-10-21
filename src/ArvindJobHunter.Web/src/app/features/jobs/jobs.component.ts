@@ -12,7 +12,7 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { ApiService } from '../../core/api.service';
-import { Job } from '../../core/models';
+import { Job, SkillDemandReport } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
@@ -26,7 +26,7 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
   imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressBarModule, MatTooltipModule, MatButtonToggleModule, MatExpansionModule, MatPaginatorModule, PageHeaderComponent, StatusChipComponent],
   template: `
     <div class="page">
-      <app-page-header eyebrow="Pipeline" title="Jobs" icon="work" subtitle="Discover UK and Europe roles with explicit visa sponsorship from supported public career sites, then review or start the approval-gated apply workflow.">
+      <app-page-header eyebrow="Pipeline" title="Jobs" icon="work" subtitle="Showing only roles in the UK, Europe, Singapore and the UAE that explicitly mention visa sponsorship (change countries in Settings). Discover roles from supported public career sites, then review or start the approval-gated apply workflow.">
         <div class="row actions-header">
           <button mat-stroked-button [disabled]="busy()" (click)="discover()"><mat-icon class="material-symbols-rounded">travel_explore</mat-icon>Discover sponsored jobs</button>
           <button mat-flat-button color="primary" (click)="formOpen.set(!formOpen())"><mat-icon class="material-symbols-rounded">{{ formOpen() ? 'close' : 'add' }}</mat-icon>{{ formOpen() ? 'Close' : 'Add a job' }}</button>
@@ -50,6 +50,8 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
               <input matInput name="importUrl" [(ngModel)]="importUrl" placeholder="https://company.com/careers/role" />
             </mat-form-field>
             <button mat-stroked-button type="button" [disabled]="busy() || !importUrl" (click)="importFromUrl()"><mat-icon class="material-symbols-rounded">download</mat-icon>Fetch &amp; prefill</button>
+            <button mat-stroked-button type="button" [disabled]="busy() || !importUrl" (click)="openInBrowser()"><mat-icon class="material-symbols-rounded">open_in_browser</mat-icon>Open in browser</button>
+            <button mat-stroked-button type="button" [disabled]="busy()" (click)="captureFromBrowser()"><mat-icon class="material-symbols-rounded">screen_share</mat-icon>Use page open in browser</button>
           </div>
           @if (warnings().length) {
             <div class="alert warn"><mat-icon class="material-symbols-rounded">info</mat-icon><div>@for (w of warnings(); track w) { <div>{{ w }}</div> }</div></div>
@@ -66,6 +68,32 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
               <button mat-flat-button color="primary" type="submit" [disabled]="busy() || !form.title || !form.company || !form.description">Save job</button>
             </div>
           </form>
+        </section>
+      }
+
+      @if (demand(); as d) {
+        <section class="card">
+          <mat-expansion-panel class="demand">
+            <mat-expansion-panel-header>
+              <mat-panel-title><mat-icon class="material-symbols-rounded">insights</mat-icon>&nbsp;Skills sponsored employers ask for</mat-panel-title>
+              <mat-panel-description>{{ d.postingsMatchingResume }} of {{ d.sponsoredPostings }} sponsored posting(s) match at least 60% of your resume skills</mat-panel-description>
+            </mat-expansion-panel-header>
+            @if (!d.sponsoredPostings) {
+              <p class="muted">No sponsored postings in your target countries yet. Run <b>Discover sponsored jobs</b> to collect some.</p>
+            } @else {
+              <p class="muted small">Counted from the {{ d.sponsoredPostings }} real posting(s) stored here, not market-wide data. Red skills are asked for but missing from your verified resume skills.</p>
+              <div class="chips">
+                @for (s of d.skills.slice(0, 25); track s.skill) {
+                  <span class="chip" [class.have]="s.onResume" [class.gap]="!s.onResume" [matTooltip]="s.postings + ' posting(s)'">{{ s.skill }} · {{ s.percentOfPostings }}%</span>
+                }
+              </div>
+              @for (c of d.countries; track c.country) {
+                <div class="country"><b>{{ c.country }}</b> <span class="muted small">({{ c.postings }})</span>
+                  @for (s of c.topSkills; track s.skill) { <span class="chip small" [class.have]="s.onResume" [class.gap]="!s.onResume">{{ s.skill }}</span> }
+                </div>
+              }
+            }
+          </mat-expansion-panel>
         </section>
       }
 
@@ -165,6 +193,7 @@ export class JobsComponent {
   readonly warnings = signal<string[]>([]);
   readonly discoveryNotes = signal<string[]>([]);
   readonly discoverySummary = signal('');
+  readonly demand = signal<SkillDemandReport | null>(null);
   readonly formOpen = signal(false);
   readonly query = signal('');
   readonly filter = signal<Filter>('ALL');
@@ -186,7 +215,10 @@ export class JobsComponent {
 
   constructor() { void this.load(); }
 
-  async load(): Promise<void> { try { this.jobs.set(await this.api.jobs()); } catch (e) { this.error.set(describeError(e)); } }
+  async load(): Promise<void> {
+    try { this.jobs.set(await this.api.jobs()); } catch (e) { this.error.set(describeError(e)); }
+    try { this.demand.set(await this.api.skillDemand()); } catch { this.demand.set(null); }
+  }
 
   onPage(event: PageEvent): void { this.pageIndex.set(event.pageIndex); this.pageSize.set(event.pageSize); }
 
@@ -196,7 +228,7 @@ export class JobsComponent {
     return this.run(async () => {
       const result = await this.api.discoverJobs(20);
       this.discoveryNotes.set(result.notes);
-      this.discoverySummary.set(`Discovered ${result.jobs.length} European visa-sponsorship role(s) with at least 60% skill match from ${result.sources.join(', ')}. Imported ${result.imported}, updated ${result.updated}, skipped ${result.skipped}.`);
+      this.discoverySummary.set(`Discovered ${result.jobs.length} visa-sponsorship role(s) in your target countries with at least 60% skill match from ${result.sources.join(', ')}. Imported ${result.imported}, updated ${result.updated}, skipped ${result.skipped}.`);
       this.notify.success(result.imported > 0 ? `Imported ${result.imported} sponsored role(s).` : 'Discovery finished.');
     });
   }
@@ -207,6 +239,19 @@ export class JobsComponent {
       this.form = { title: draft.title ?? '', company: draft.company ?? '', location: draft.location ?? '', source: draft.source, url: draft.url, description: draft.description };
       this.warnings.set(draft.warnings);
       this.notify.info('Prefilled from the page. Review and save.');
+    }, false);
+  }
+
+  openInBrowser(): Promise<void> {
+    return this.run(async () => { await this.api.openInBrowser(this.importUrl); this.notify.info('Opened in the browser window. Sign in if needed, then use "Use page open in browser".'); }, false);
+  }
+
+  captureFromBrowser(): Promise<void> {
+    return this.run(async () => {
+      const draft = await this.api.captureJobFromBrowser();
+      this.form = { title: draft.title ?? '', company: draft.company ?? '', location: draft.location ?? '', source: draft.source, url: draft.url, description: draft.description };
+      this.warnings.set(draft.warnings);
+      this.notify.info('Prefilled from the browser page. Review and save.');
     }, false);
   }
 

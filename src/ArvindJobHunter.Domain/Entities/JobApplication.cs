@@ -51,13 +51,28 @@ public sealed record JobApplication(
         }
 
         var now = DateTimeOffset.UtcNow;
+        var (dueAt, note) = (FollowUpDueAt, FollowUpNote);
+        if (to == ApplicationStatus.APPLIED && dueAt is null)
+        {
+            (dueAt, note) = (now.AddDays(DefaultFollowUpDays), AutoFollowUpNote);
+        }
+        else if (to == ApplicationStatus.RECRUITER_REPLIED && note == AutoFollowUpNote)
+        {
+            (dueAt, note) = (null, null);
+        }
+
         return this with
         {
             Status = to,
             UpdatedAt = now,
+            FollowUpDueAt = dueAt,
+            FollowUpNote = note,
             History = [.. History, new ApplicationTransition(Status, to, now, reason)]
         };
     }
+
+    public const int DefaultFollowUpDays = 7;
+    public const string AutoFollowUpNote = "No reply after 7 days - consider a follow-up email";
 
     public JobApplication WithResume(Guid resumeVersionId) =>
         this with { ResumeVersionId = resumeVersionId, UpdatedAt = DateTimeOffset.UtcNow };

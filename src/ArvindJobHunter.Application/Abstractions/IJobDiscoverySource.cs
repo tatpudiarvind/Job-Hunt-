@@ -43,3 +43,14 @@ public interface IJobDiscoverySource
     string Name { get; }
     Task<IReadOnlyList<DiscoveredJobPosting>> SearchAsync(JobDiscoveryRequest request, CancellationToken cancellationToken);
 }
+
+public sealed record SkillDemand(string Skill, int Postings, int PercentOfPostings, bool OnResume);
+
+public sealed record CountrySkillDemand(string Country, int Postings, IReadOnlyList<SkillDemand> TopSkills);
+
+public sealed record SkillDemandReport(
+    int SponsoredPostings,
+    int PostingsMatchingResume,
+    IReadOnlyList<string> ResumeSkills,
+    IReadOnlyList<SkillDemand> Skills,
+    IReadOnlyList<CountrySkillDemand> Countries);

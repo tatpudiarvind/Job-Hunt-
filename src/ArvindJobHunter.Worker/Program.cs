@@ -6,6 +6,8 @@ using ArvindJobHunter.Application.Abstractions;
 using ArvindJobHunter.Domain.Entities;
 using ArvindJobHunter.Logging;
 using ArvindJobHunter.ResumeAutomation.Word;
+using ArvindJobHunter.Contracts.Api;
+using ArvindJobHunter.Worker.Browser;
 
 // Local document-automation worker.
 // - Binds to loopback only (never reachable from the network).
@@ -37,7 +39,17 @@ var port = builder.Configuration.GetValue<int?>("Worker:Port") ?? 5310;
 
 builder.WebHost.ConfigureKestrel(k => k.Listen(IPAddress.Loopback, port));
 builder.Services.AddSingleton<IResumeDocumentService, OpenXmlResumeDocumentService>();
+builder.Services.AddSingleton<IDocumentExporter>(sp => new OfficeDocumentExporter(sp.GetRequiredService<ILogger<OfficeDocumentExporter>>()));
 builder.Services.AddSingleton<ConcurrentDictionary<string, ResumeChangeReport>>();
+var browserRoot = Path.GetFullPath(builder.Configuration["Worker:BrowserDirectory"] ?? Path.Combine(AppContext.BaseDirectory, "browser"));
+var browserOptions = new BrowserOptions(
+    Path.Combine(browserRoot, "profile"),
+    Path.Combine(browserRoot, "screenshots"),
+    builder.Configuration.GetValue<bool?>("Worker:Headless") ?? false,
+    builder.Configuration["Worker:DownloadsDirectory"] ?? Path.Combine(browserRoot, "downloads"));
+builder.Services.AddSingleton(browserOptions);
+builder.Services.AddSingleton(_ => AdapterRegistry.FromConfig(Path.Combine(AppContext.BaseDirectory, "Browser", "sites.json")));
+builder.Services.AddSingleton<BrowserSessionManager>();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 
 var app = builder.Build();
@@ -126,7 +138,76 @@ app.MapPost("/resume/apply", async (ApplyResumeRequest request, IResumeDocumentS
     }
 });
 
+app.MapPost("/resume/export-pdf", async (ExportPdfRequest request, IDocumentExporter exporter, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.DocxPath)) return Results.BadRequest(new { error = "docxPath is required." });
+    var source = Path.GetFullPath(request.DocxPath);
+    if (!source.StartsWith(outputRoot, StringComparison.OrdinalIgnoreCase) || !source.EndsWith(".docx", StringComparison.OrdinalIgnoreCase))
+    {
+        log.LogWarning("PDF export rejected: {Path} is not a .docx inside the worker output directory", source);
+        return Results.BadRequest(new { error = "Only .docx files inside the worker output directory can be exported." });
+    }
+    if (exporter.AvailableEngine is null) return Results.Problem("PDF export needs Microsoft Word or LibreOffice installed.", statusCode: StatusCodes.Status501NotImplemented);
+
+    try { return Results.Ok(await exporter.ExportPdfAsync(source, Path.ChangeExtension(source, ".pdf"), ct)); }
+    catch (FileNotFoundException ex) { return Results.NotFound(new { error = ex.Message }); }
+    catch (InvalidOperationException ex)
+    {
+        log.LogWarning(ex, "PDF export failed for {Path}", source);
+        return Results.Conflict(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/apply/prepare", async (FillPreviewRequest request, BrowserSessionManager browser, CancellationToken ct) =>
+{
+    try { return Results.Ok(await browser.PrepareAsync(request, ct)); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+    catch (FileNotFoundException ex) { return Results.NotFound(new { error = ex.Message }); }
+    catch (Microsoft.Playwright.PlaywrightException ex)
+    {
+        log.LogWarning(ex, "Browser prepare failed for {Url}", request.Url);
+        return Results.Problem($"Browser automation failed: {ex.Message}. Run 'pwsh bin/.../playwright.ps1 install chromium' once if the browser is missing.", statusCode: StatusCodes.Status502BadGateway);
+    }
+});
+
+app.MapPost("/apply/bind", (BindSessionRequest request, BrowserSessionManager browser) =>
+    browser.Bind(request.SessionId, request.PayloadHash) ? Results.Ok() : Results.NotFound(new { error = "Session not found." }));
+
+app.MapPost("/apply/submit", async (SubmitRequest request, BrowserSessionManager browser, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.IdempotencyKey)) return Results.BadRequest(new { error = "idempotencyKey is required." });
+    return Results.Ok(await browser.SubmitAsync(request, ct));
+});
+
+app.MapDelete("/apply/{sessionId}", async (string sessionId, BrowserSessionManager browser) => { await browser.DiscardAsync(sessionId); return Results.NoContent(); });
+
+app.MapPost("/browser/open", async (OpenBrowserRequest request, BrowserSessionManager browser) =>
+{
+    if (!Uri.TryCreate(request.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) return Results.BadRequest(new { error = "A http(s) URL is required." });
+    await browser.OpenAsync(request.Url);
+    return Results.Ok(new { opened = request.Url, downloads = browserOptions.DownloadsDirectory });
+});
+
+app.MapGet("/browser/downloads", () =>
+{
+    var dir = browserOptions.DownloadsDirectory!;
+    Directory.CreateDirectory(dir);
+    return Results.Ok(new DirectoryInfo(dir).GetFiles("*.pdf").OrderByDescending(f => f.LastWriteTimeUtc)
+        .Select(f => new { path = f.FullName, name = f.Name, size = f.Length, modified = f.LastWriteTimeUtc }));
+});
+
+app.MapPost("/browser/capture", async (BrowserSessionManager browser) =>
+    await browser.CaptureActiveAsync() is { } captured ? Results.Ok(captured) : Results.NotFound(new { error = "No web page is open in the browser." }));
+
 app.Run();
+
+public sealed record CapturedPage(string Url, string Title, string PageTitle, string Text);
+
+public sealed record BindSessionRequest(string SessionId, string PayloadHash);
+
+public sealed record OpenBrowserRequest(string Url);
+
+public sealed record ExportPdfRequest(string DocxPath);
 
 public sealed record ReadResumeRequest(string MasterPath);
 

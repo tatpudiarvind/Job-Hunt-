@@ -21,8 +21,17 @@ export interface Job {
   id: string; title: string; company: string; location: string; source: string; url: string | null; description: string;
   status: 'DISCOVERED' | 'ANALYZED' | 'QUALIFIED' | 'DISMISSED'; createdAt: string; updatedAt: string;
   analysis: JobAnalysis | null; match: JobMatch | null;
-  sponsorship?: SponsorshipEvidence | null; recruiter?: RecruiterContact | null;
+  sponsorship?: SponsorshipEvidence | null; recruiter?: RecruiterContact | null; countryCode?: string | null;
 }
+
+export interface CountryProfile {
+  code: string; name: string; documentName: string; maxPages: number; photoExpected: boolean; includeDateOfBirth: boolean;
+  includeNationality: boolean; spelling: 'US' | 'UK'; dateFormat: string; requiredSections: string[]; notes: string[];
+}
+
+export interface SkillDemand { skill: string; postings: number; percentOfPostings: number; onResume: boolean; }
+export interface CountrySkillDemand { country: string; postings: number; topSkills: SkillDemand[]; }
+export interface SkillDemandReport { sponsoredPostings: number; postingsMatchingResume: number; resumeSkills: string[]; skills: SkillDemand[]; countries: CountrySkillDemand[]; }
 
 export interface SponsorshipEvidence { status: 'UNKNOWN' | 'MENTIONED' | 'EXCLUDED'; matchedPhrase: string | null; source: string; checkedAt: string; }
 export interface RecruiterContact { status: 'NOT_FOUND' | 'USER_PROVIDED' | 'VERIFIED'; name: string | null; email: string | null; source: string | null; recordedAt: string; }
@@ -60,10 +69,12 @@ export interface ResumeChange { section: string; oldText: string; newText: strin
 export interface ResumeVersion {
   id: string; jobId: string; masterPath: string; outputPath: string | null; status: string; changes: ResumeChange[];
   approvalId: string | null; createdAt: string;
+  pdfPath?: string | null; countryCode?: string | null; template?: 'KeepMasterTemplate' | 'CountryTemplate';
 }
 
 export interface ResumePreviewParagraph { index: number; text: string; style: string | null; }
-export interface ResumePreview { id: string; jobId: string; status: string; paragraphs: ResumePreviewParagraph[]; generatedAt: string; }
+export interface TemplateFidelity { templatePreserved: boolean; issues: string[]; masterPageEstimate: number; tailoredPageEstimate: number; }
+export interface ResumePreview { id: string; jobId: string; status: string; paragraphs: ResumePreviewParagraph[]; generatedAt: string; templateFidelity?: TemplateFidelity | null; }
 
 export interface EmailDraft {
   id: string; jobId: string | null; kind: string; to: string; subject: string; body: string; status: string;
@@ -84,7 +95,7 @@ export interface JobDiscoveryResult {
 
 export interface JobPipelineResult { run: AgentRun; job: Job; resume: ResumeVersion | null; coverLetter: EmailDraft | null; resumeApproval: ApprovalRequest | null; }
 
-export interface Settings { mode: ExecutionMode; llmProvider: string; llmDisplayName: string; llmBaseUrl: string; llmConfigured: boolean; llmModel: string; openAiConfigured: boolean; masterResumePath: string; masterResumeExists: boolean; dataDirectory: string; }
+export interface Settings { mode: ExecutionMode; llmProvider: string; llmDisplayName: string; llmBaseUrl: string; llmConfigured: boolean; llmModel: string; openAiConfigured: boolean; masterResumePath: string; masterResumeExists: boolean; dataDirectory: string; masterResumeWarning?: string | null; countryResumePaths?: Record<string, string> | null; }
 export interface JobSearchPreferences {
   preferredCountries: string[];
   linkedInProfileUrl: string | null;
@@ -101,3 +112,14 @@ export interface JobPostingDraft { url: string; title: string | null; company: s
 export interface InterviewResource { title: string; url: string; provider: string; kind: 'video' | 'website' | 'search'; why: string | null; }
 export interface InterviewResourceGroup { topic: string; resources: InterviewResource[]; }
 export interface InterviewPrepPlan { jobId: string; jobTitle: string; company: string; focusSkills: string[]; groups: InterviewResourceGroup[]; generatedAt: string; }
+
+export interface SubmissionField { label: string; value: string | null; required: boolean; source: string; }
+export interface SubmissionPackage {
+  id: string; jobId: string; applicationId: string; url: string; adapter: string;
+  resumeFilePath: string; resumeSha256: string; coverLetterText: string | null;
+  fields: SubmissionField[]; unansweredFields: string[]; screenshotPath: string | null;
+  status: 'PREPARED' | 'NEEDS_ANSWERS' | 'AWAITING_APPROVAL' | 'SUBMITTED' | 'FAILED';
+  approvalId: string | null; createdAt: string; updatedAt: string; sessionId: string | null;
+  confirmationText: string | null; readyForApproval: boolean;
+}
+export interface SiteSetting { adapter: string; enabled: boolean; dailyCap: number; submittedToday: number; }

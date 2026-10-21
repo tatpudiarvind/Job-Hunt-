@@ -12,7 +12,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
 import { ApiService } from '../../core/api.service';
-import { ApplicationReview, Job, JobApplication } from '../../core/models';
+import { ApplicationReview, Job, JobApplication, SubmissionPackage } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
@@ -84,6 +84,7 @@ import { NotifyService } from '../../shared/notify.service';
                   <div class="row">
                     <button mat-stroked-button [disabled]="busy() || !followUpAt[app.id]" (click)="schedule(app)"><mat-icon class="material-symbols-rounded">alarm_add</mat-icon>Schedule</button>
                     <button mat-button [disabled]="busy()" (click)="quickFollowUp(app)">+7 days</button>
+                    <button mat-button [disabled]="busy()" (click)="draftFollowUp(app)" matTooltip="Creates a draft on the Emails page; sending still needs approval">Draft email</button>
                     @if (app.followUpDueAt) { <button mat-button [disabled]="busy()" (click)="clearFollowUp(app)">Clear</button> }
                   </div>
                   @if (app.followUpNote) { <span class="muted small">Current note: {{ app.followUpNote }}</span> }
@@ -108,6 +109,30 @@ import { NotifyService } from '../../shared/notify.service';
                 } @else {
                   <button mat-stroked-button [disabled]="busy()" (click)="review(app)"><mat-icon class="material-symbols-rounded">fact_check</mat-icon>Review before submitting</button>
                 }
+              </div>
+              <h4 class="mt">Browser apply</h4>
+              <div class="stack">
+                <span class="small muted">Opens a visible browser, fills the form and stops before Submit. Final submit only runs after you approve it on the Approvals page.</span>
+                @for (s of submissionsFor(app); track s.id) {
+                  <div class="card stack">
+                    <div class="row wrap"><app-status-chip [status]="s.status" /><span class="small">{{ s.adapter }} · {{ s.updatedAt | date:'medium' }}</span>
+                      @if (s.screenshotPath) { <button mat-button (click)="screenshot(s.id)"><mat-icon class="material-symbols-rounded">image</mat-icon>Screenshot</button> }
+                    </div>
+                    <span class="small">Resume: {{ s.resumeFilePath }}</span>
+                    @for (f of s.fields; track f.label) { <span class="small">{{ f.label }}: <strong>{{ f.value || '—' }}</strong> <span class="muted">({{ f.source }})</span></span> }
+                    @if (s.confirmationText) { <span class="small">{{ s.confirmationText }}</span> }
+                    @if (s.unansweredFields.length && s.status !== 'SUBMITTED') {
+                      @for (q of s.unansweredFields; track q) {
+                        <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>{{ q }}</mat-label>
+                          <input matInput [ngModel]="answerDraft(s.id)[q] ?? ''" (ngModelChange)="answerDraft(s.id)[q] = $event" />
+                        </mat-form-field>
+                      }
+                      <div class="row"><button mat-flat-button color="primary" [disabled]="busy()" (click)="answer(s.id)">Save answers</button></div>
+                    }
+                    @if (s.status === 'AWAITING_APPROVAL') { <a mat-button routerLink="/approvals">Review approval<mat-icon iconPositionEnd class="material-symbols-rounded">arrow_forward</mat-icon></a> }
+                  </div>
+                }
+                <div class="row"><button mat-stroked-button [disabled]="busy()" (click)="prepare(app)"><mat-icon class="material-symbols-rounded">open_in_browser</mat-icon>Fill application in browser</button></div>
               </div>
               <h4 class="mt">History</h4>
               <div class="timeline">
@@ -152,6 +177,20 @@ export class ApplicationsComponent {
   followUpNote: Record<string, string> = {};
   reviews: Record<string, ApplicationReview> = {};
   private jobs: Job[] = [];
+  readonly submissions = signal<SubmissionPackage[]>([]);
+  private answers: Record<string, Record<string, string>> = {};
+
+  submissionsFor(app: JobApplication): SubmissionPackage[] { return this.submissions().filter(s => s.applicationId === app.id); }
+  answerDraft(id: string): Record<string, string> { return this.answers[id] ??= {}; }
+  prepare(app: JobApplication): Promise<void> {
+    return this.run(async () => { const s = await this.api.prepareSubmission(app.jobId); this.notify.info(s.status === 'AWAITING_APPROVAL' ? 'Form filled — approve it to submit.' : 'Form filled — some questions need answers.'); });
+  }
+  answer(id: string): Promise<void> {
+    return this.run(async () => { await this.api.answerSubmission(id, this.answerDraft(id)); delete this.answers[id]; this.notify.success('Answers saved.'); });
+  }
+  async screenshot(id: string): Promise<void> {
+    try { window.open(URL.createObjectURL(await this.api.submissionScreenshot(id)), '_blank'); } catch (e) { this.error.set(describeError(e)); }
+  }
 
   constructor() { void this.load(); }
 
@@ -160,8 +199,9 @@ export class ApplicationsComponent {
 
   async load(): Promise<void> {
     try {
-      const [apps, statuses, jobs] = await Promise.all([this.api.applications(), this.api.applicationStatuses(), this.api.jobs()]);
+      const [apps, statuses, jobs] = await Promise.all([this.api.applications(), this.api.applicationStatuses(), this.api.jobs(true)]);
       this.applications.set(apps); this.statuses.set(statuses); this.jobs = jobs;
+      this.submissions.set(await this.api.submissions().catch(() => []));
       for (const a of apps) {
         if (a.followUpDueAt && !this.followUpAt[a.id]) this.followUpAt[a.id] = this.toLocalInput(a.followUpDueAt);
         if (a.followUpNote && !this.followUpNote[a.id]) this.followUpNote[a.id] = a.followUpNote;
@@ -180,6 +220,9 @@ export class ApplicationsComponent {
     const due = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     this.followUpAt[app.id] = this.toLocalInput(due.toISOString());
     return this.run(async () => { await this.api.scheduleFollowUp(app.id, due.toISOString(), this.followUpNote[app.id] || 'Follow up on application'); this.notify.success('Follow-up set for one week from now.'); });
+  }
+  draftFollowUp(app: JobApplication): Promise<void> {
+    return this.run(async () => { await this.api.draftFollowUpEmail(app.id); this.notify.success('Follow-up draft created on the Emails page.'); }, false);
   }
   clearFollowUp(app: JobApplication): Promise<void> {
     return this.run(async () => { await this.api.clearFollowUp(app.id); delete this.followUpAt[app.id]; delete this.followUpNote[app.id]; this.notify.info('Reminder cleared.'); });

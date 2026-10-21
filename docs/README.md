@@ -85,6 +85,9 @@ The goals of this documentation set are to:
 - [OAUTH_IMPLEMENTATION_SUMMARY.md](OAUTH_IMPLEMENTATION_SUMMARY.md)  
   Historical implementation summary and change record for the OAuth feature.
 
+- [BROWSER_AUTO_APPLY.md](BROWSER_AUTO_APPLY.md)  
+  Visible-browser form filling, site caps, and approval-gated final submission.
+
 ---
 
 ## 5. Recommended Reading Paths

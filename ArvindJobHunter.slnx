@@ -17,5 +17,6 @@
     <Project Path="tests/ArvindJobHunter.Domain.Tests/ArvindJobHunter.Domain.Tests.csproj" />
     <Project Path="tests/ArvindJobHunter.IntegrationTests/ArvindJobHunter.IntegrationTests.csproj" />
     <Project Path="tests/ArvindJobHunter.Logging.Tests/ArvindJobHunter.Logging.Tests.csproj" />
+    <Project Path="tests/ArvindJobHunter.Worker.Tests/ArvindJobHunter.Worker.Tests.csproj" />
   </Folder>
 </Solution>
