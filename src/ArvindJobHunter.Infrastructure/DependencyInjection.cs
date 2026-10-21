@@ -43,6 +43,7 @@ public static class DependencyInjection
         AddListRepository<EmailDraft>(services, dataDirectory, "emails.json", e => e.Id);
         AddListRepository<ExecutionReceipt>(services, dataDirectory, "receipts.json", r => r.Id);
         AddListRepository<ApplicationPackage>(services, dataDirectory, "application-packages.json", p => p.Id);
+        AddListRepository<SubmissionPackage>(services, dataDirectory, "submissions.json", s => s.Id);
 
         services.AddSingleton<ICandidateProfileRepository, CandidateProfileRepository>();
         services.AddSingleton<ICacheInvalidatable>(sp => (ICacheInvalidatable)sp.GetRequiredService<ICandidateProfileRepository>());
@@ -79,6 +80,9 @@ public static class DependencyInjection
         services.AddSingleton<IJobDiscoverySource>(sp => sp.GetRequiredService<ArbeitnowJobDiscoverySource>());
         services.AddSingleton(workerOptions);
         services.AddSingleton<OpenXmlResumeDocumentService>();
+        services.AddSingleton<ITemplateFidelityChecker, OpenXmlTemplateFidelityChecker>();
+        services.AddSingleton<ICoverLetterDocumentWriter, OpenXmlCoverLetterWriter>();
+        services.AddSingleton<IDocumentExporter>(sp => new OfficeDocumentExporter(sp.GetRequiredService<ILogger<OfficeDocumentExporter>>()));
         if (workerOptions.Enabled)
         {
             services.AddHttpClient("ResumeWorker", http =>
@@ -86,6 +90,13 @@ public static class DependencyInjection
                 http.BaseAddress = new Uri(workerOptions.BaseUrl);
                 http.DefaultRequestHeaders.Add("X-Worker-Secret", workerOptions.SharedSecret);
                 http.Timeout = TimeSpan.FromSeconds(30);
+            });
+            // Filling multi-step forms like a person takes a while; submit waits for the confirmation page.
+            services.AddHttpClient<IBrowserApplyClient, ArvindJobHunter.Infrastructure.Browser.WorkerBrowserApplyClient>(http =>
+            {
+                http.BaseAddress = new Uri(workerOptions.BaseUrl);
+                http.DefaultRequestHeaders.Add("X-Worker-Secret", workerOptions.SharedSecret);
+                http.Timeout = TimeSpan.FromMinutes(5);
             });
             services.AddSingleton<IResumeDocumentService>(sp => new WorkerResumeDocumentService(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient("ResumeWorker"),

@@ -22,8 +22,13 @@ public sealed class JobDiscoveryService(
         "United Kingdom", "Germany", "Netherlands", "Ireland", "France", "Belgium", "Luxembourg", "Switzerland",
         "Sweden", "Norway", "Denmark", "Finland", "Iceland", "Austria", "Spain", "Portugal", "Italy", "Malta", "Greece", "Cyprus",
         "Poland", "Czech Republic", "Slovakia", "Hungary", "Romania", "Bulgaria", "Croatia", "Slovenia", "Serbia",
-        "Estonia", "Latvia", "Lithuania", "Other European Countries"
+        "Estonia", "Latvia", "Lithuania", "Other European Countries", "Singapore", "United Arab Emirates"
     ];
+
+    public static IReadOnlyList<string> DefaultTargetCountries => DefaultCountries;
+
+    // Words that say how/where work happens without naming a country; a location made only of these is checked against the description instead.
+    private static readonly Regex GenericLocationWords = new(@"\b(remote|hybrid|on-?site|onsite|office|anywhere|worldwide|global|flexible|multiple|locations?|or|and|in)\b|[^\p{L}]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Dictionary<string, string[]> CountryKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -59,7 +64,9 @@ public sealed class JobDiscoveryService(
         ["Estonia"] = ["estonia", "tallinn", "tartu"],
         ["Latvia"] = ["latvia", "riga"],
         ["Lithuania"] = ["lithuania", "vilnius", "kaunas"],
-        ["Other European Countries"] = ["europe", "european union", "emea", "eea", "remote - europe", "remote europe"]
+        ["Other European Countries"] = ["europe", "european union", "emea", "eea", "remote - europe", "remote europe"],
+        ["Singapore"] = ["singapore"],
+        ["United Arab Emirates"] = ["united arab emirates", "uae", "dubai", "abu dhabi", "sharjah"]
     };
 
     // Technical terms used to detect what a posting actually requires, so skill coverage can be measured.
@@ -113,7 +120,7 @@ public sealed class JobDiscoveryService(
         }
 
         var rankedAll = fetched
-            .Where(posting => MatchesTargetCountries(posting, request.TargetRegions))
+            .Where(posting => IsInTargetCountries(posting.Location, posting.Description, request.TargetRegions))
             .Where(posting => !request.RequireVisaSponsorship || HasVisaSponsorship(posting))
             .Select(posting => Rank(posting, request))
             .ToList();
@@ -265,7 +272,7 @@ public sealed class JobDiscoveryService(
     }
 
     private static int CountryScore(DiscoveredJobPosting posting, IReadOnlyList<string> countries) =>
-        MatchesTargetCountries(posting, countries) ? 10 : 0;
+        IsInTargetCountries(posting.Location, posting.Description, countries) ? 10 : 0;
 
     private static int WorkModeScore(DiscoveredJobPosting posting, string? workMode)
     {
@@ -280,10 +287,15 @@ public sealed class JobDiscoveryService(
         return SponsorshipKeywords.Count(keyword => ContainsPhrase(haystack, keyword)) > 1 ? 10 : 5;
     }
 
-    private static bool MatchesTargetCountries(DiscoveredJobPosting posting, IReadOnlyList<string> countries)
+    /// <summary>
+    /// The posting's location decides the country. The description is only consulted when the location names no place
+    /// ("Remote", blank), because descriptions often mention headquarters elsewhere ("headquartered in Munich" on a Texas role).
+    /// </summary>
+    public static bool IsInTargetCountries(string? location, string? description, IReadOnlyList<string> countries)
     {
         if (countries.Count == 0) return true;
-        var haystack = $"{posting.Location}\n{posting.Description}";
+        var where = location ?? string.Empty;
+        var haystack = GenericLocationWords.Replace(where, string.Empty).Length == 0 ? $"{where}\n{description}" : where;
         return countries.Any(country => CountryKeywordsFor(country).Any(keyword => ContainsPhrase(haystack, keyword)));
     }
 
@@ -292,6 +304,56 @@ public sealed class JobDiscoveryService(
 
     private static bool HasVisaSponsorship(DiscoveredJobPosting posting) =>
         EvaluateSponsorship(posting.Title, posting.Description, posting.Location, posting.Source).Status == SponsorshipStatus.MENTIONED;
+
+    /// <summary>Countries the user targets: saved preferences, otherwise Europe, UK, Singapore and UAE.</summary>
+    public async Task<IReadOnlyList<string>> TargetCountriesAsync(CancellationToken cancellationToken)
+    {
+        var saved = (await preferences.GetAsync(cancellationToken)).PreferredCountries;
+        return saved.Count > 0 ? saved : DefaultCountries;
+    }
+
+    /// <summary>
+    /// Which technical skills real sponsored postings in the target countries ask for, how often, and whether each is on the resume.
+    /// Built from stored jobs only, so it reflects the postings discovered so far rather than general market data.
+    /// </summary>
+    public async Task<SkillDemandReport> SkillDemandAsync(CancellationToken cancellationToken)
+    {
+        var countries = await TargetCountriesAsync(cancellationToken);
+        var resumeSkills = (await facts.ListVerifiedAsync(cancellationToken))
+            .Where(f => f.FactType == "SKILL").Select(f => f.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var eligible = (await jobs.ListAsync(cancellationToken)).Where(job => IsEligible(job, countries)).ToList();
+
+        var perJob = eligible.Select(job =>
+        {
+            var text = $"{job.Title}\n{job.Description}";
+            var asked = TechVocabulary.Concat(resumeSkills).Distinct(StringComparer.OrdinalIgnoreCase).Where(term => ContainsPhrase(text, term)).ToList();
+            asked = asked.Where(term => !asked.Any(other => other.Length > term.Length && other.Contains(term, StringComparison.OrdinalIgnoreCase))).ToList();
+            var country = countries.FirstOrDefault(c => IsInTargetCountries(job.Location, job.Description, [c])) ?? "Other";
+            var coverage = SkillCoveragePercent(new DiscoveredJobPosting(job.Id.ToString(), job.Title, job.Company, job.Location, job.Source, job.Url, job.Description, []), resumeSkills);
+            return (Country: country, Skills: asked, Coverage: coverage);
+        }).ToList();
+
+        bool OnResume(string skill) => resumeSkills.Any(s => s.Equals(skill, StringComparison.OrdinalIgnoreCase)
+            || s.Contains(skill, StringComparison.OrdinalIgnoreCase) || skill.Contains(s, StringComparison.OrdinalIgnoreCase));
+
+        List<SkillDemand> Rank(IReadOnlyCollection<(string Country, List<string> Skills, int Coverage)> rows) => rows
+            .SelectMany(r => r.Skills).GroupBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new SkillDemand(g.Key, g.Count(), rows.Count == 0 ? 0 : (int)Math.Round(g.Count() * 100.0 / rows.Count), OnResume(g.Key)))
+            .OrderByDescending(d => d.Postings).ThenBy(d => d.Skill, StringComparer.OrdinalIgnoreCase).ToList();
+
+        return new SkillDemandReport(
+            eligible.Count,
+            perJob.Count(r => r.Coverage >= MinimumSkillMatchPercent),
+            resumeSkills,
+            Rank(perJob),
+            perJob.GroupBy(r => r.Country).OrderByDescending(g => g.Count())
+                .Select(g => new CountrySkillDemand(g.Key, g.Count(), Rank(g.ToList()).Take(10).ToList())).ToList());
+    }
+
+    /// <summary>A job belongs in the active list when it is located in a target country and explicitly mentions visa sponsorship.</summary>
+    public static bool IsEligible(Job job, IReadOnlyList<string> countries) =>
+        IsInTargetCountries(job.Location, job.Description, countries)
+        && (job.Sponsorship ?? EvaluateSponsorship(job.Title, job.Description, job.Location, job.Source)).Status == SponsorshipStatus.MENTIONED;
 
     public static SponsorshipEvidence EvaluateSponsorship(string title, string description, string location, string source)
     {

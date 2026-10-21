@@ -31,6 +31,14 @@ public static class ResumeAndEmailEndpoints
         group.MapPost("/{id:guid}/request-approval", async Task<IResult> (Guid id, ClaimsPrincipal user, ResumeService service, CancellationToken ct) =>
             await service.RequestApprovalAsync(id, user.UserId(), ct) is { } approval ? Results.Ok(approval) : Results.NotFound());
 
+        group.MapPut("/{id:guid}/template", async Task<IResult> (Guid id, SetResumeTemplateRequest request, ClaimsPrincipal user, ResumeService service, CancellationToken ct) =>
+        {
+            if (!Enum.TryParse<ArvindJobHunter.Domain.Entities.ResumeTemplateChoice>(request.Template, true, out var template))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["template"] = ["Use KeepMasterTemplate or CountryTemplate."] });
+            try { return await service.SetTemplateAsync(id, template, user.UserId(), ct) is { } version ? Results.Ok(version) : Results.NotFound(); }
+            catch (InvalidOperationException ex) { return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict); }
+        });
+
         return endpoints;
     }
 
@@ -51,6 +59,13 @@ public static class ResumeAndEmailEndpoints
                 return Results.Created($"/api/emails/{draft.Id}", draft);
             }
             catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+        });
+
+        group.MapPost("/{id:guid}/request-document-approval", async Task<IResult> (Guid id, Guid? resumeVersionId, ClaimsPrincipal user, EmailDraftService service, ResumeService resumes, ArvindJobHunter.Application.Abstractions.IRuntimeSettingsProvider settings, CancellationToken ct) =>
+        {
+            var template = resumeVersionId is { } rid && await resumes.GetAsync(rid, ct) is { } resume ? resume.OutputPath ?? resume.MasterPath : (await settings.GetAsync(ct)).MasterResumePath;
+            try { return await service.RequestDocumentApprovalAsync(id, string.IsNullOrWhiteSpace(template) ? null : template, user.UserId(), ct) is { } approval ? Results.Ok(approval) : Results.NotFound(); }
+            catch (ArgumentException ex) { return Results.ValidationProblem(new Dictionary<string, string[]> { ["kind"] = [ex.Message] }); }
         });
 
         group.MapPut("/{id:guid}", async Task<IResult> (Guid id, UpdateEmailDraftRequest request, ClaimsPrincipal user, EmailDraftService service, CancellationToken ct) =>

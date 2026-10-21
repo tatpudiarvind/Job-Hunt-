@@ -4,7 +4,8 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
 import {
   AgentRun, ApplicationPackage, ApplicationReview, ApprovalRequest, AuditEvent, CandidateFact, CandidateProfile, Dashboard, EmailDraft, ExecutionReceipt,
-GoogleOAuthSettings, GoogleStatus, InterviewPrepPlan, Job, JobApplication, JobDiscoveryResult, JobPipelineResult, JobPostingDraft, JobSearchPreferences, ResumePreview, ResumeVersion, Settings
+  GoogleOAuthSettings, GoogleStatus, InterviewPrepPlan, Job, JobApplication, JobDiscoveryResult, JobPipelineResult, JobPostingDraft, JobSearchPreferences, ResumePreview, ResumeVersion, Settings,
+  SkillDemandReport, CountryProfile, SubmissionPackage, SiteSetting
 } from './models';
 
 @Injectable({ providedIn: 'root' })
@@ -27,10 +28,11 @@ export class ApiService {
   invalidateFact(id: string) { return this.post<CandidateFact>(`/candidate-profile/facts/${id}/invalidate`); }
   deleteFact(id: string) { return this.delete(`/candidate-profile/facts/${id}`); }
 
-  jobs() { return this.get<Job[]>('/jobs'); }
+  jobs(all = false) { return this.get<Job[]>(all ? '/jobs?all=true' : '/jobs'); }
   job(id: string) { return this.get<Job>(`/jobs/${id}`); }
   createJob(body: { title: string; company: string; location: string | null; source: string | null; url: string | null; description: string }) { return this.post<Job>('/jobs', body); }
   previewJobImport(url: string) { return this.post<JobPostingDraft>('/jobs/import-preview', { url }); }
+  skillDemand() { return this.get<SkillDemandReport>('/jobs/skill-demand'); }
   discoverJobs(maxResults = 20) { return this.post<JobDiscoveryResult>('/jobs/discover', { maxResults }); }
   interviewPrep(jobId: string) { return this.get<InterviewPrepPlan>(`/jobs/${jobId}/interview-prep`); }
   exportData() { return firstValueFrom(this.http.get(`${environment.apiBaseUrl}/api/data/export`, { responseType: 'blob' })); }
@@ -42,6 +44,8 @@ export class ApiService {
     return firstValueFrom(this.http.put<Job>(`${this.base}/jobs/${id}/recruiter-contact`, { status, name, email, source }));
   }
   dismissJob(id: string) { return this.post<Job>(`/jobs/${id}/dismiss`); }
+  setJobCountry(id: string, countryCode: string | null) { return firstValueFrom(this.http.put<Job>(`${this.base}/jobs/${id}/country`, { countryCode })); }
+  countryProfile(id: string) { return this.get<CountryProfile>(`/jobs/${id}/country-profile`); }
   deleteJob(id: string) { return this.delete(`/jobs/${id}`); }
 
   applications() { return this.get<JobApplication[]>('/applications'); }
@@ -52,6 +56,20 @@ export class ApiService {
   dueFollowUps() { return this.get<JobApplication[]>('/applications/follow-ups/due'); }
   scheduleFollowUp(id: string, dueAt: string, note: string | null) { return firstValueFrom(this.http.put<JobApplication>(`${environment.apiBaseUrl}/api/applications/${id}/follow-up`, { dueAt, note })); }
   clearFollowUp(id: string) { return firstValueFrom(this.http.delete<JobApplication>(`${environment.apiBaseUrl}/api/applications/${id}/follow-up`)); }
+  draftFollowUpEmail(id: string) { return this.post<EmailDraft>(`/applications/${id}/follow-up-email`); }
+
+  openInBrowser(url: string) { return this.post<void>('/browser/open', { url }); }
+  browserDownloads() { return this.get<{ path: string; name: string; size: number; modified: string }[]>('/browser/downloads'); }
+  importDownload(path: string, label: string | null, keywords: string[]) { return this.post<{ path: string; label: string; keywords: string[] }>('/browser/downloads/import', { path, label, keywords }); }
+  resumeLibrary() { return this.get<{ path: string; label: string; keywords: string[] }[]>('/browser/resume-library'); }
+  captureJobFromBrowser() { return this.post<JobPostingDraft>('/browser/capture-job'); }
+
+  submissions(jobId?: string) { return this.get<SubmissionPackage[]>(jobId ? `/submissions?jobId=${jobId}` : '/submissions'); }
+  prepareSubmission(jobId: string, adapter?: string) { return this.post<SubmissionPackage>(`/submissions/jobs/${jobId}/prepare`, { adapter: adapter ?? null }); }
+  answerSubmission(id: string, answers: Record<string, string>) { return this.post<SubmissionPackage>(`/submissions/${id}/answers`, { answers }); }
+  submissionScreenshot(id: string) { return firstValueFrom(this.http.get(`${this.base}/submissions/${id}/screenshot`, { responseType: 'blob' })); }
+  sites() { return this.get<SiteSetting[]>('/sites'); }
+  updateSites(sites: { adapter: string; enabled: boolean; dailyCap: number }[]) { return this.put<SiteSetting[]>('/sites', { sites }); }
 
   approvals() { return this.get<ApprovalRequest[]>('/approvals'); }
   approve(id: string, note: string | null) { return this.post<ApprovalRequest>(`/approvals/${id}/approve`, { note }); }
@@ -62,11 +80,13 @@ export class ApiService {
   resumes() { return this.get<ResumeVersion[]>('/resumes'); }
   resumePreview(id: string) { return this.get<ResumePreview>(`/resumes/${id}/preview`); }
   requestResumeApproval(id: string) { return this.post<ApprovalRequest>(`/resumes/${id}/request-approval`); }
+  setResumeTemplate(id: string, template: string) { return this.put<ResumeVersion>(`/resumes/${id}/template`, { template }); }
 
   emails() { return this.get<EmailDraft[]>('/emails'); }
   updateEmail(id: string, body: { to: string; subject: string; body: string }) { return this.put<EmailDraft>(`/emails/${id}`, body); }
   /** `send` is a required API flag: true asks to approve sending, false asks to approve creating a Gmail draft. */
   requestEmailApproval(id: string, send = true) { return this.post<ApprovalRequest>(`/emails/${id}/request-approval?send=${send}`); }
+  requestCoverLetterDocument(id: string, resumeVersionId?: string) { return this.post<ApprovalRequest>(`/emails/${id}/request-document-approval${resumeVersionId ? `?resumeVersionId=${resumeVersionId}` : ''}`); }
   deleteEmail(id: string) { return this.delete(`/emails/${id}`); }
 
   agentRuns() { return this.get<AgentRun[]>('/agent-runs'); }
@@ -78,7 +98,8 @@ export class ApiService {
   updateJobSearchPreferences(body: { preferredCountries: string[]; linkedInProfileUrl: string | null; preferredRoles: string[]; workMode: string | null; salaryExpectation: string | null; workAuthorization: string | null }) { return this.put<JobSearchPreferences>('/settings/job-search-preferences', body); }
   googleOAuthSettings() { return this.get<GoogleOAuthSettings>('/settings/google-oauth'); }
   updateGoogleOAuthSettings(body: { clientId: string; clientSecret: string | null; redirectUri: string }) { return this.put<GoogleOAuthSettings>('/settings/google-oauth', body); }
-  uploadMasterResume(file: File) { const form = new FormData(); form.append('file', file, file.name); return firstValueFrom(this.http.post<{ masterResumePath: string; fileName: string; size: number }>(`${environment.apiBaseUrl}/api/settings/master-resume`, form)); }
+  uploadMasterResume(file: File, country?: string) { const form = new FormData(); form.append('file', file, file.name); const query = country ? `?country=${encodeURIComponent(country)}` : ''; return firstValueFrom(this.http.post<{ masterResumePath: string; fileName: string; size: number }>(`${environment.apiBaseUrl}/api/settings/master-resume${query}`, form)); }
+  removeCountryResume(country: string) { return firstValueFrom(this.http.delete<void>(`${environment.apiBaseUrl}/api/settings/country-resumes/${encodeURIComponent(country)}`)); }
   googleStatus() { return this.get<GoogleStatus>('/integrations/google/status'); }
   googleAuthorizeUrl() { return this.get<{ url: string }>('/integrations/google/authorize'); }
   googleRevoke() { return this.post<void>('/integrations/google/revoke'); }

@@ -118,6 +118,7 @@ app.MapCandidateFactEndpoints();
 app.MapJobEndpoints();
 app.MapApprovalEndpoints();
 app.MapApplicationEndpoints();
+app.MapSubmissionEndpoints(dataDirectory);
 app.MapResumeEndpoints();
 app.MapEmailEndpoints();
 app.MapReadModelEndpoints(dataDirectory);

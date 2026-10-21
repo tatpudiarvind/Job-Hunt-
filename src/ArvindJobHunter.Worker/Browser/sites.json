@@ -1,0 +1,31 @@
+﻿{
+  "sites": [
+    {
+      "name": "linkedin",
+      "hosts": [ "linkedin.com" ],
+      "applyButton": "^(Easy Apply)",
+      "nextButton": "^(Next|Continue to next step|Review|Review your application)$",
+      "submitButton": "^(Submit application)$",
+      "confirmation": "application was sent|application submitted",
+      "loginMarker": "Sign in|Join now"
+    },
+    {
+      "name": "indeed",
+      "hosts": [ "indeed.com" ],
+      "applyButton": "^(Apply now|Apply on company site)",
+      "nextButton": "^(Continue|Next|Review your application)$",
+      "submitButton": "^(Submit your application|Submit application)$",
+      "confirmation": "application has been submitted|your application has been submitted",
+      "loginMarker": "Sign in|Create an account"
+    },
+    {
+      "name": "company",
+      "hosts": [ "*" ],
+      "applyButton": "^(Apply|Apply now|Apply for this job|I'm interested)$",
+      "nextButton": "^(Next|Continue|Save and continue)$",
+      "submitButton": "^(Submit|Submit application|Send application|Apply)$",
+      "confirmation": "thank you for applying|application (has been )?(received|submitted)|we.ve received your application",
+      "loginMarker": ""
+    }
+  ]
+}

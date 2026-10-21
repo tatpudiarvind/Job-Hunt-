@@ -14,7 +14,15 @@ public static class JobEndpoints
     {
         var group = endpoints.MapGroup("/api/jobs").WithTags("Jobs").RequireAuthorization();
 
-        group.MapGet("", (JobService service, CancellationToken ct) => service.ListAsync(ct));
+        group.MapGet("", async (bool? all, JobService service, JobDiscoveryService discovery, CancellationToken ct) =>
+        {
+            var list = await service.ListAsync(ct);
+            if (all == true) return list;
+            var countries = await discovery.TargetCountriesAsync(ct);
+            return list.Where(job => JobDiscoveryService.IsEligible(job, countries)).ToList();
+        });
+
+        group.MapGet("/skill-demand", (JobDiscoveryService discovery, CancellationToken ct) => discovery.SkillDemandAsync(ct));
 
         group.MapGet("/{id:guid}", async Task<IResult> (Guid id, JobService service, CancellationToken ct) =>
             await service.GetAsync(id, ct) is { } job ? Results.Ok(job) : Results.NotFound());
@@ -119,6 +127,12 @@ public static class JobEndpoints
 
         group.MapGet("/{id:guid}/interview-prep", async Task<IResult> (Guid id, JobService service, InterviewPrepService prep, CancellationToken ct) =>
             await service.GetAsync(id, ct) is { } job ? Results.Ok(prep.Build(job)) : Results.NotFound());
+
+        group.MapPut("/{id:guid}/country", async Task<IResult> (Guid id, SetJobCountryRequest request, ClaimsPrincipal user, JobService service, CancellationToken ct) =>
+            await service.SetCountryAsync(id, request.CountryCode, user.UserId(), ct) is { } job ? Results.Ok(job) : Results.NotFound());
+
+        group.MapGet("/{id:guid}/country-profile", async Task<IResult> (Guid id, JobService service, CancellationToken ct) =>
+            await service.GetAsync(id, ct) is { } job ? Results.Ok(CountryProfiles.Get(job.ResolveCountryCode())) : Results.NotFound());
 
         group.MapPost("/{id:guid}/dismiss", async Task<IResult> (Guid id, ClaimsPrincipal user, JobService service, CancellationToken ct) =>
             await service.DismissAsync(id, user.UserId(), ct) is { } job ? Results.Ok(job) : Results.NotFound());

@@ -42,7 +42,11 @@ public sealed record UpdateEmailDraftRequest(
     [property: Required] string Subject,
     [property: Required] string Body);
 
-public sealed record SettingsResponse(string Mode, string LlmProvider, string LlmDisplayName, string LlmBaseUrl, bool LlmConfigured, string LlmModel, bool OpenAiConfigured, string MasterResumePath, bool MasterResumeExists, string DataDirectory);
+public sealed record SettingsResponse(string Mode, string LlmProvider, string LlmDisplayName, string LlmBaseUrl, bool LlmConfigured, string LlmModel, bool OpenAiConfigured, string MasterResumePath, bool MasterResumeExists, string DataDirectory, string? MasterResumeWarning = null, IReadOnlyDictionary<string, string>? CountryResumePaths = null);
+
+public sealed record SetJobCountryRequest(string? CountryCode);
+
+public sealed record SetResumeTemplateRequest(string Template);
 
 public sealed record GoogleOAuthSettingsResponse(string ClientId, string RedirectUri, bool ClientSecretConfigured, bool Configured);
 
@@ -73,7 +77,9 @@ public sealed record UpdateGoogleOAuthSettingsRequest(
 
 public sealed record ResumePreviewParagraph(int Index, string Text, string? Style);
 
-public sealed record ResumePreviewResponse(Guid Id, Guid JobId, string Status, IReadOnlyList<ResumePreviewParagraph> Paragraphs, DateTimeOffset GeneratedAt);
+public sealed record ResumePreviewResponse(Guid Id, Guid JobId, string Status, IReadOnlyList<ResumePreviewParagraph> Paragraphs, DateTimeOffset GeneratedAt, TemplateFidelityResponse? TemplateFidelity = null);
+
+public sealed record TemplateFidelityResponse(bool TemplatePreserved, IReadOnlyList<string> Issues, int MasterPageEstimate, int TailoredPageEstimate);
 
 /// <summary>An error or warning reported by the browser so it lands in the same Markdown log as server events.</summary>
 public sealed record ClientLogRequest(
@@ -92,3 +98,33 @@ public sealed record DashboardResponse(
     int VerifiedFacts,
     string Mode,
     string LlmProvider);
+
+// Browser auto-apply: API <-> Worker and API <-> Web.
+public sealed record FillFieldDto(string Label, string? Value, bool Required, string Source);
+
+public sealed record FillPreviewRequest(
+    string Url,
+    string ResumeFilePath,
+    string? CoverLetterText,
+    IReadOnlyDictionary<string, string> Answers,
+    string? Adapter = null);
+
+public sealed record FillPreviewResponse(
+    string SessionId,
+    string Adapter,
+    IReadOnlyList<FillFieldDto> Fields,
+    IReadOnlyList<string> UnansweredFields,
+    string? ScreenshotPath,
+    string? Blocker = null);
+
+public sealed record SubmitRequest(string SessionId, string ExpectedPayloadHash, string IdempotencyKey);
+
+public sealed record SubmitResponse(bool Submitted, string? ConfirmationText, string? ScreenshotPath, string? Error = null);
+
+public sealed record SiteSettingsDto(string Adapter, bool Enabled, int DailyCap, int SubmittedToday = 0);
+
+public sealed record UpdateSiteSettingsRequest(IReadOnlyList<SiteSettingsDto> Sites);
+
+public sealed record PrepareSubmissionRequest(Guid? ResumeVersionId = null, string? Adapter = null);
+
+public sealed record AnswerSubmissionRequest(IReadOnlyDictionary<string, string> Answers);

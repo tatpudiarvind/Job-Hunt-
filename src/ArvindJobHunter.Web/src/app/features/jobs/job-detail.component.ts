@@ -11,7 +11,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../core/api.service';
-import { EmailDraft, Job, JobApplication, ResumeVersion } from '../../core/models';
+import { CountryProfile, EmailDraft, Job, JobApplication, ResumeVersion } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { StatusChipComponent } from '../../shared/status-chip.component';
 import { NotifyService } from '../../shared/notify.service';
@@ -66,6 +66,30 @@ import { NotifyService } from '../../shared/notify.service';
           </div>
         </section>
 
+        @if (country(); as c) {
+          <section class="card">
+            <div class="row actions">
+              <div class="card-title"><mat-icon class="material-symbols-rounded">public</mat-icon>{{ c.code === 'XX' ? 'Country not detected' : c.name + ' conventions' }}</div>
+              <span class="grow"></span>
+              <mat-form-field appearance="outline" class="country" subscriptSizing="dynamic">
+                <mat-label>Country</mat-label>
+                <select matNativeControl [ngModel]="j.countryCode ?? ''" (ngModelChange)="setCountry($event)" name="country">
+                  <option value="">Auto-detect</option>
+                  @for (o of countryOptions; track o.code) { <option [value]="o.code">{{ o.name }}</option> }
+                </select>
+              </mat-form-field>
+            </div>
+            <div class="chips">
+              <span class="chip primary">{{ c.documentName }}</span>
+              <span class="chip">max {{ c.maxPages }} page(s)</span>
+              <span class="chip">{{ c.photoExpected ? 'photo common' : 'no photo' }}</span>
+              <span class="chip">{{ c.spelling }} spelling</span>
+              @for (s of c.requiredSections; track s) { <span class="chip">{{ s }}</span> }
+            </div>
+            <ul class="list mt">@for (n of c.notes; track n) { <li class="small">{{ n }}</li> }</ul>
+          </section>
+        }
+
         <mat-tab-group animationDuration="150ms">
           <mat-tab label="Analysis & match">
             <div class="grid-2">
@@ -103,6 +127,14 @@ import { NotifyService } from '../../shared/notify.service';
               @for (r of resumes(); track r.id) {
                 <section class="card">
                   <div class="card-title"><mat-icon class="material-symbols-rounded">description</mat-icon>Proposed resume changes<span class="grow"></span><button mat-stroked-button type="button" [disabled]="busy()" (click)="previewResume(r)"><mat-icon class="material-symbols-rounded">preview</mat-icon>Preview resume</button><app-status-chip [status]="r.status" /></div>
+                  @if (r.status !== 'GENERATED') {
+                    <div class="row actions mt">
+                      <span class="small">Template:</span>
+                      <button mat-button type="button" [class.primary]="r.template !== 'CountryTemplate'" [disabled]="busy() || r.template !== 'CountryTemplate'" (click)="setTemplate(r, 'KeepMasterTemplate')">Keep my template</button>
+                      <button mat-button type="button" [disabled]="busy() || r.template === 'CountryTemplate' || !r.countryCode" (click)="setTemplate(r, 'CountryTemplate')">Use {{ r.countryCode ?? 'country' }} template</button>
+                      <span class="small muted">Changing it cancels any pending approval.</span>
+                    </div>
+                  }
                   @if (r.approvalId) { <div class="alert info"><mat-icon class="material-symbols-rounded">fact_check</mat-icon><span>Approval pending — review and execute it under <a routerLink="/approvals">Approvals</a>. The .docx is written only after execution.</span></div> }
                   <mat-accordion class="mt">
                     @for (c of r.changes; track $index) {
@@ -162,6 +194,7 @@ import { NotifyService } from '../../shared/notify.service';
     .score-card span { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; }
     .actions { align-items: center; }
     .recipient { width: min(100%, 280px); }
+    .country { width: 220px; }
     h4 { font-size: .85rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ajh-muted); margin-bottom: .4rem; }
     .list { margin: 0; padding-left: 1.2rem; display: grid; gap: .35rem; line-height: 1.5; }
     .diff { display: grid; gap: 1rem; grid-template-columns: 1fr 1fr; }
@@ -178,6 +211,12 @@ export class JobDetailComponent {
   readonly application = signal<JobApplication | null>(null);
   readonly resumes = signal<ResumeVersion[]>([]);
   readonly emails = signal<EmailDraft[]>([]);
+  readonly country = signal<CountryProfile | null>(null);
+  readonly countryOptions = [
+    { code: 'US', name: 'United States' }, { code: 'CA', name: 'Canada' }, { code: 'GB', name: 'United Kingdom' }, { code: 'IE', name: 'Ireland' },
+    { code: 'DE', name: 'Germany' }, { code: 'NL', name: 'Netherlands' }, { code: 'AU', name: 'Australia' }, { code: 'NZ', name: 'New Zealand' },
+    { code: 'AE', name: 'United Arab Emirates' }, { code: 'SG', name: 'Singapore' }, { code: 'IN', name: 'India' }
+  ];
   readonly error = signal('');
   readonly busy = signal(false);
   recipient = '';
@@ -193,6 +232,7 @@ export class JobDetailComponent {
       this.application.set(apps.find(a => a.jobId === this.jobId) ?? null);
       this.resumes.set(resumes.filter(r => r.jobId === this.jobId));
       this.emails.set(emails.filter(e => e.jobId === this.jobId));
+      this.country.set(await this.api.countryProfile(this.jobId));
     } catch (e) { this.error.set(describeError(e)); }
   }
 
@@ -201,6 +241,15 @@ export class JobDetailComponent {
     return this.run(async () => {
       const result = await this.api.prepareJob(this.jobId);
       this.notify.info(result.resumeApproval ? 'Resume changes proposed. Approve them in Approvals before anything is written.' : 'Application prepared.');
+    });
+  }
+  setCountry(code: string): Promise<void> {
+    return this.run(async () => { await this.api.setJobCountry(this.jobId, code || null); });
+  }
+  setTemplate(resume: ResumeVersion, template: string): Promise<void> {
+    return this.run(async () => {
+      await this.api.setResumeTemplate(resume.id, template);
+      this.notify.info('Template changed. Request approval again before generating.');
     });
   }
   previewResume(resume: ResumeVersion): Promise<void> {

@@ -85,7 +85,8 @@ public sealed class OpenXmlResumeDocumentService(ILogger<OpenXmlResumeDocumentSe
                     continue;
                 }
 
-                ReplaceParagraphText(target, target.InnerText.Replace(change.OldText, change.NewText, StringComparison.Ordinal));
+                if (!ReplaceWithinRuns(target, change.OldText, change.NewText))
+                    ReplaceParagraphText(target, target.InnerText.Replace(change.OldText, change.NewText, StringComparison.Ordinal));
                 applied.Add(change);
             }
 
@@ -95,16 +96,92 @@ public sealed class OpenXmlResumeDocumentService(ILogger<OpenXmlResumeDocumentSe
         return new ResumeChangeReport(outputPath, applied, skipped);
     }
 
+    /// <summary>
+    /// Replaces text only inside the runs it spans, so bold labels, links, tabs and other runs in the line keep their formatting.
+    /// The new text takes the formatting of the run where the old text started.
+    /// </summary>
+    private static bool ReplaceWithinRuns(Paragraph paragraph, string oldText, string newText)
+    {
+        var texts = paragraph.Descendants<Text>().ToList();
+        var joined = string.Concat(texts.Select(t => t.Text));
+        var start = joined.IndexOf(oldText, StringComparison.Ordinal);
+        if (start < 0) return false;
+        var end = start + oldText.Length;
+
+        var offset = 0;
+        var inserted = false;
+        foreach (var node in texts)
+        {
+            var nodeStart = offset;
+            var nodeEnd = offset + node.Text.Length;
+            offset = nodeEnd;
+            if (nodeEnd <= start || nodeStart >= end) continue;
+
+            var cutFrom = Math.Max(start, nodeStart) - nodeStart;
+            var cutTo = Math.Min(end, nodeEnd) - nodeStart;
+            var replacement = inserted ? string.Empty : newText;
+            node.Text = node.Text[..cutFrom] + replacement + node.Text[cutTo..];
+            node.Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve;
+            inserted = true;
+        }
+
+        return inserted;
+    }
+
+    /// <summary>
+    /// Fallback when the old text is not contiguous in the text nodes (for example, split by a tab or a field).
+    /// Only the span that differs between the current and the new line text is rewritten, so every run outside
+    /// that span (bold labels, links, dates) keeps its formatting.
+    /// </summary>
     private static void ReplaceParagraphText(Paragraph paragraph, string newText)
     {
-        var runs = paragraph.Elements<Run>().ToList();
-        var template = runs.FirstOrDefault()?.RunProperties?.CloneNode(true) as RunProperties;
-        foreach (var run in runs) run.Remove();
+        var texts = paragraph.Descendants<Text>().ToList();
+        if (texts.Count == 0)
+        {
+            paragraph.AppendChild(new Run(new Text(newText) { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve }));
+            return;
+        }
 
-        var replacement = new Run();
-        if (template is not null) replacement.AppendChild(template);
-        replacement.AppendChild(new Text(newText) { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve });
-        paragraph.AppendChild(replacement);
+        var current = string.Concat(texts.Select(t => t.Text));
+        var prefix = 0;
+        var maxPrefix = Math.Min(current.Length, newText.Length);
+        while (prefix < maxPrefix && current[prefix] == newText[prefix]) prefix++;
+        var suffix = 0;
+        while (suffix < current.Length - prefix && suffix < newText.Length - prefix
+               && current[current.Length - 1 - suffix] == newText[newText.Length - 1 - suffix]) suffix++;
+
+        var start = prefix;
+        var end = current.Length - suffix;
+        var replacement = newText.Substring(prefix, newText.Length - suffix - prefix);
+        if (start == end && replacement.Length == 0) return;
+
+        var offset = 0;
+        var inserted = false;
+        Text? last = null;
+        foreach (var node in texts)
+        {
+            var nodeStart = offset;
+            var nodeEnd = offset + node.Text.Length;
+            offset = nodeEnd;
+            last = node;
+            // A pure insertion (start == end) goes into the run where it begins, or the preceding run at a boundary.
+            var touches = start == end
+                ? !inserted && start >= nodeStart && start <= nodeEnd
+                : nodeEnd > start && nodeStart < end;
+            if (!touches) continue;
+
+            var cutFrom = Math.Max(start, nodeStart) - nodeStart;
+            var cutTo = Math.Min(end, nodeEnd) - nodeStart;
+            node.Text = node.Text[..cutFrom] + (inserted ? string.Empty : replacement) + node.Text[cutTo..];
+            node.Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve;
+            inserted = true;
+        }
+
+        if (!inserted && last is not null)
+        {
+            last.Text += replacement;
+            last.Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve;
+        }
     }
 
     private static List<ResumeParagraph> ReadPdfParagraphs(string path)

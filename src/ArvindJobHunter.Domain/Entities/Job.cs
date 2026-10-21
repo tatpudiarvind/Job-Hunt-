@@ -14,7 +14,8 @@ public sealed record Job(
     JobAnalysis? Analysis = null,
     JobMatch? Match = null,
     SponsorshipEvidence? Sponsorship = null,
-    RecruiterContact? Recruiter = null)
+    RecruiterContact? Recruiter = null,
+    string? CountryCode = null)
 {
     public static Job Create(string title, string company, string location, string source, string? url, string description)
     {
@@ -22,11 +23,19 @@ public sealed record Job(
         if (string.IsNullOrWhiteSpace(company)) throw new ArgumentException("Company is required.", nameof(company));
         if (string.IsNullOrWhiteSpace(description)) throw new ArgumentException("Description is required.", nameof(description));
         var now = DateTimeOffset.UtcNow;
-        return new Job(Guid.NewGuid(), title.Trim(), company.Trim(), location.Trim(), string.IsNullOrWhiteSpace(source) ? "MANUAL" : source.Trim(), url, description.Trim(), JobStatus.DISCOVERED, now, now);
+        return new Job(Guid.NewGuid(), title.Trim(), company.Trim(), location.Trim(), string.IsNullOrWhiteSpace(source) ? "MANUAL" : source.Trim(), url, description.Trim(), JobStatus.DISCOVERED, now, now,
+            CountryCode: CountryProfiles.Detect(location));
     }
 
+    /// <summary>The country used for resume conventions: stored code, else the location, else the description.</summary>
+    public string? ResolveCountryCode() =>
+        CountryCode ?? CountryProfiles.Detect(Location) ?? CountryProfiles.Detect(Description.Length > 600 ? Description[..600] : Description);
+
+    public Job WithCountry(string? countryCode) =>
+        this with { CountryCode = CountryProfiles.Normalize(countryCode), UpdatedAt = DateTimeOffset.UtcNow };
+
     public Job WithAnalysis(JobAnalysis analysis) =>
-        this with { Analysis = analysis, Status = JobStatus.ANALYZED, UpdatedAt = DateTimeOffset.UtcNow };
+        this with { Analysis = analysis, Status = JobStatus.ANALYZED, CountryCode = ResolveCountryCode(), UpdatedAt = DateTimeOffset.UtcNow };
 
     public Job WithMatch(JobMatch match, int qualificationThreshold) =>
         this with

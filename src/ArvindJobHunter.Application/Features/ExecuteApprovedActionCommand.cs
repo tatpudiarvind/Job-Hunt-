@@ -23,7 +23,11 @@ public sealed class ExecuteApprovedActionCommand(
     ApplicationService applications,
     AuditService audit,
     ILogger<ExecuteApprovedActionCommand> logger,
-    IRepository<ApplicationPackage>? packages = null)
+    IRepository<ApplicationPackage>? packages = null,
+    IDocumentExporter? exporter = null,
+    ICoverLetterDocumentWriter? coverLetters = null,
+    IRepository<SubmissionPackage>? submissions = null,
+    IBrowserApplyClient? browser = null)
 {
     // Executions never overlap. Otherwise two clicks (or two tabs) with different idempotency keys could both
     // pass the guard before either one consumes the approval, and an email would be sent twice.
@@ -62,6 +66,8 @@ public sealed class ExecuteApprovedActionCommand(
                     ApprovalActionType.APPLY_RESUME_CHANGES => await ApplyResumeAsync(approval, idempotencyKey, current, userId, cancellationToken),
                     ApprovalActionType.CREATE_EMAIL_DRAFT => await EmailAsync(approval, idempotencyKey, current, send: false, userId, cancellationToken),
                     ApprovalActionType.SEND_EMAIL => await EmailAsync(approval, idempotencyKey, current, send: true, userId, cancellationToken),
+                    ApprovalActionType.GENERATE_COVER_LETTER => await CoverLetterDocumentAsync(approval, idempotencyKey, current, cancellationToken),
+                    ApprovalActionType.SUBMIT_APPLICATION => await SubmitApplicationAsync(approval, idempotencyKey, current, userId, cancellationToken),
                     _ => throw new ApprovalViolationException($"{approval.ActionType} has no executor in this build.")
                 };
             }
@@ -117,7 +123,24 @@ public sealed class ExecuteApprovedActionCommand(
         var outputDirectory = Path.Combine(Path.GetDirectoryName(version.MasterPath)!, "tailored");
         var outputPath = Path.Combine(outputDirectory, $"{Path.GetFileNameWithoutExtension(version.MasterPath)}-{version.JobId:N}-{version.Id:N}.docx");
         var report = await resumeDocuments.ApplyChangesAsync(version.MasterPath, outputPath, version.Changes, cancellationToken);
-        await resumes.UpsertAsync(version.MarkGenerated(report.OutputPath), cancellationToken);
+        var generated = version.MarkGenerated(report.OutputPath);
+        var pdfNote = "";
+        if (exporter?.AvailableEngine is not null)
+        {
+            try
+            {
+                var pdf = await exporter.ExportPdfAsync(report.OutputPath, Path.ChangeExtension(report.OutputPath, ".pdf"), cancellationToken);
+                generated = generated.WithPdf(pdf.PdfPath, pdf.Sha256);
+                pdfNote = $" PDF exported with {pdf.Engine} (sha256 {pdf.Sha256[..12]}).";
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The .docx is the approved artifact; a PDF failure must not hide it.
+                logger.LogWarning(ex, "PDF export failed for resume version {VersionId}", version.Id);
+                pdfNote = $" PDF export failed: {ex.Message}";
+            }
+        }
+        await resumes.UpsertAsync(generated, cancellationToken);
 
         var application = await applications.GetByJobAsync(version.JobId, cancellationToken);
         if (application is not null)
@@ -125,7 +148,36 @@ public sealed class ExecuteApprovedActionCommand(
             await applications.TryAdvanceAsync(application.WithResume(version.Id), ApplicationStatus.RESUME_PREPARED, "Tailored resume generated.", userId, cancellationToken);
         }
 
-        return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, report.OutputPath, websiteUrl, $"Applied {report.Applied.Count} change(s); skipped {report.Skipped.Count}.");
+        return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, report.OutputPath, websiteUrl, $"Applied {report.Applied.Count} change(s); skipped {report.Skipped.Count}.{pdfNote}");
+    }
+
+    private async Task<ExecutionReceipt> CoverLetterDocumentAsync(ApprovalRequest approval, string key, RuntimeSettings current, CancellationToken cancellationToken)
+    {
+        var draft = await drafts.GetAsync(approval.TargetId, cancellationToken)
+            ?? throw new KeyNotFoundException("Cover letter not found.");
+        guard.EnsureAllowed(approval, ApprovalActionType.GENERATE_COVER_LETTER, ApprovalRequest.ComputeHash(draft.DocumentPayloadForApproval()), current.Mode);
+        var websiteUrl = draft.JobId is { } jobId ? await GetJobUrlAsync(jobId, cancellationToken) : null;
+        if (current.Mode != ExecutionMode.LIVE)
+            return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, null, websiteUrl, $"{current.Mode} mode: cover letter approved; no document was written.");
+        if (coverLetters is null)
+            return Receipt(approval, key, current.Mode, ExecutionResult.FAILED, null, websiteUrl, "Cover letter documents are not available in this build.");
+
+        var baseDirectory = draft.TemplatePath is { Length: > 0 } t ? Path.GetDirectoryName(t)! : Path.GetDirectoryName(current.MasterResumePath) is { Length: > 0 } d ? d : Path.GetTempPath();
+        var outputPath = Path.Combine(baseDirectory, "tailored", $"cover-letter-{draft.JobId:N}-{draft.Id:N}.docx");
+        await coverLetters.WriteAsync(draft.TemplatePath, outputPath, draft.Body, cancellationToken);
+        string? pdfPath = null;
+        var note = "";
+        if (exporter?.AvailableEngine is not null)
+        {
+            try { pdfPath = (await exporter.ExportPdfAsync(outputPath, Path.ChangeExtension(outputPath, ".pdf"), cancellationToken)).PdfPath; note = " PDF exported."; }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "PDF export failed for cover letter {DraftId}", draft.Id);
+                note = $" PDF export failed: {ex.Message}";
+            }
+        }
+        await drafts.UpsertAsync(draft.WithDocument(outputPath, pdfPath), cancellationToken);
+        return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, outputPath, websiteUrl, $"Cover letter written.{note}");
     }
 
     private async Task<ExecutionReceipt> EmailAsync(ApprovalRequest approval, string key, RuntimeSettings current, bool send, Guid userId, CancellationToken cancellationToken)
@@ -232,6 +284,42 @@ public sealed class ExecuteApprovedActionCommand(
         {
             await applications.TryAdvanceAsync(application, ApplicationStatus.RECRUITER_CONTACTED, reason, userId, cancellationToken);
         }
+    }
+
+    private async Task<ExecutionReceipt> SubmitApplicationAsync(ApprovalRequest approval, string key, RuntimeSettings current, Guid userId, CancellationToken cancellationToken)
+    {
+        if (submissions is null) throw new ApprovalViolationException("Browser submission is not available in this build.");
+        var package = await submissions.GetAsync(approval.TargetId, cancellationToken)
+            ?? throw new KeyNotFoundException("Submission package not found.");
+        var payloadHash = ApprovalRequest.ComputeHash(package.PayloadForApproval());
+        guard.EnsureAllowed(approval, ApprovalActionType.SUBMIT_APPLICATION, payloadHash, current.Mode);
+        if (package.Status == SubmissionStatus.SUBMITTED) throw new ApprovalViolationException("This application was already submitted.");
+        if (!package.ReadyForApproval) throw new ApprovalViolationException("Some required fields are still unanswered.");
+
+        if (current.Mode != ExecutionMode.LIVE)
+            return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, null, package.Url, $"{current.Mode} mode: submission approved; the form was not submitted.");
+
+        var sites = current.Sites.Count > 0 ? current.Sites : SiteSettings.Defaults();
+        ExternalActionGuard.EnsureSiteAllowed(package.Adapter, sites, SiteSettings.SubmittedToday(await submissions.ListAsync(cancellationToken), package.Adapter, DateTimeOffset.UtcNow));
+        if (!File.Exists(package.ResumeFilePath) || ApplicationPackageService.FileHash(package.ResumeFilePath) != package.ResumeSha256)
+            throw new ApprovalViolationException("The resume file changed or is missing since the form was prepared. Prepare again.");
+        if (browser is null || package.SessionId is null)
+            return Receipt(approval, key, current.Mode, ExecutionResult.FAILED, null, package.Url, "The browser worker is not available.");
+
+        var result = await browser.SubmitAsync(new ArvindJobHunter.Contracts.Api.SubmitRequest(package.SessionId, payloadHash, key), cancellationToken);
+        if (!result.Submitted)
+        {
+            await submissions.UpsertAsync(package.MarkFailed(result.Error ?? "Not submitted."), cancellationToken);
+            // UNKNOWN when the click may have happened: the user must check the browser before retrying.
+            var outcome = result.Error?.Contains("was clicked", StringComparison.OrdinalIgnoreCase) == true ? ExecutionResult.UNKNOWN : ExecutionResult.FAILED;
+            return Receipt(approval, key, current.Mode, outcome, result.ScreenshotPath, package.Url, result.Error);
+        }
+
+        await submissions.UpsertAsync(package.MarkSubmitted(result.ConfirmationText, result.ScreenshotPath), cancellationToken);
+        var application = await applications.GetAsync(package.ApplicationId, cancellationToken);
+        if (application is not null)
+            await applications.TryAdvanceAsync(application, ApplicationStatus.APPLIED, $"Submitted via {package.Adapter}.", userId, cancellationToken);
+        return Receipt(approval, key, current.Mode, ExecutionResult.SUCCESS, result.ScreenshotPath, package.Url, $"Submitted on {package.Adapter}: {result.ConfirmationText}");
     }
 
     private static ExecutionReceipt Receipt(ApprovalRequest approval, string key, ExecutionMode mode, ExecutionResult result, string? externalRef, string? websiteUrl, string? message) =>

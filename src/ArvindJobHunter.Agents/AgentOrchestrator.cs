@@ -32,7 +32,8 @@ public sealed class AgentOrchestrator(
     EmailDraftService emails,
     AgentRunService runs,
     AuditService audit,
-    ILogger<AgentOrchestrator> logger)
+    ILogger<AgentOrchestrator> logger,
+    IJobSearchPreferencesProvider? searchPreferences = null)
 {
     public async Task<JobPipelineResult> AnalyzeAndMatchAsync(Guid jobId, Guid userId, CancellationToken cancellationToken)
     {
@@ -77,12 +78,14 @@ public sealed class AgentOrchestrator(
             var verified = await facts.ListVerifiedAsync(cancellationToken);
             var profile = await profiles.GetCurrentAsync(cancellationToken);
 
-            var resumeDoc = await InvokeAsync<ReadResumeInput, ResumeDocument>(session, "ReadResumeTool", new ReadResumeInput(session.Settings.MasterResumePath), cancellationToken);
+            var countryCode = job.ResolveCountryCode();
+            var masterPath = session.Settings.MasterResumeFor(countryCode);
+            var resumeDoc = await InvokeAsync<ReadResumeInput, ResumeDocument>(session, "ReadResumeTool", new ReadResumeInput(masterPath), cancellationToken);
             var changes = await InvokeAsync<CustomizeResumeInput, IReadOnlyList<ResumeChange>>(session, "CustomizeResumeTool",
                 new CustomizeResumeInput(job, job.Match!, resumeDoc.Value ?? new ResumeDocument([]), verified), cancellationToken);
             if (changes.Succeeded && changes.Value is { Count: > 0 })
             {
-                resume = await resumes.ProposeAsync(job.Id, changes.Value, userId, cancellationToken);
+                resume = await resumes.ProposeAsync(job.Id, changes.Value, userId, cancellationToken, countryCode);
                 approval = await resumes.RequestApprovalAsync(resume.Id, userId, cancellationToken);
             }
             else
@@ -91,7 +94,7 @@ public sealed class AgentOrchestrator(
             }
 
             var email = await InvokeAsync<GenerateEmailInput, GeneratedEmail>(session, "GenerateCoverLetterTool",
-                new GenerateEmailInput(job, job.Match!, profile?.Name ?? "Candidate", "COVER_LETTER", null), cancellationToken);
+                new GenerateEmailInput(job, job.Match!, profile?.Name ?? "Candidate", "COVER_LETTER", null, verified), cancellationToken);
             if (email.Succeeded && email.Value is not null)
             {
                 letter = await emails.CreateAsync(job.Id, "COVER_LETTER", "", email.Value.Subject, email.Value.Body, userId, cancellationToken);
@@ -197,14 +200,17 @@ public sealed class AgentOrchestrator(
         var verified = await facts.ListVerifiedAsync(cancellationToken);
         var match = await InvokeAsync<MatchJobInput, JobMatch>(session, "MatchJobTool", new MatchJobInput(job, analysis.Value, verified), cancellationToken);
         if (!match.Succeeded || match.Value is null) throw new InvalidOperationException($"Job matching failed: {match.Error ?? "no output"}");
-        job = job.WithMatch(match.Value, session.Settings.QualificationThreshold);
+        var scored = match.Value;
+        if (searchPreferences is not null)
+            scored = CountryProfiles.BoostForPreferredCountry(scored, job.ResolveCountryCode(), (await searchPreferences.GetAsync(cancellationToken)).PreferredCountries);
+        job = job.WithMatch(scored, session.Settings.QualificationThreshold);
         await jobs.SaveAsync(job, cancellationToken);
         logger.LogInformation("Job {JobId} scored {Score}/100 against threshold {Threshold} → {Status} (matched: {Matched}; missing: {Missing})",
-            job.Id, match.Value.Score, session.Settings.QualificationThreshold, job.Status,
-            string.Join(", ", match.Value.MatchedSkills), match.Value.MissingSkills.Count == 0 ? "none" : string.Join(", ", match.Value.MissingSkills));
+            job.Id, scored.Score, session.Settings.QualificationThreshold, job.Status,
+            string.Join(", ", scored.MatchedSkills), scored.MissingSkills.Count == 0 ? "none" : string.Join(", ", scored.MissingSkills));
 
         var application = await applications.EnsureForJobAsync(job.Id, cancellationToken);
-        await applications.TryAdvanceAsync(application, ApplicationStatus.MATCHED, $"Match score {match.Value.Score}.", userId, cancellationToken);
+        await applications.TryAdvanceAsync(application, ApplicationStatus.MATCHED, $"Match score {scored.Score}.", userId, cancellationToken);
         return job;
     }
 

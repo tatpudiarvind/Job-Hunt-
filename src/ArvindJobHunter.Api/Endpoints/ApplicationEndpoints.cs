@@ -68,6 +68,12 @@ public static class ApplicationEndpoints
         group.MapDelete("/{id:guid}/follow-up", async Task<IResult> (Guid id, ClaimsPrincipal user, ApplicationService service, CancellationToken ct) =>
             await service.ClearFollowUpAsync(id, user.UserId(), ct) is { } updated ? Results.Ok(updated) : Results.NotFound());
 
+        group.MapPost("/{id:guid}/follow-up-email", async Task<IResult> (Guid id, ClaimsPrincipal user, FollowUpDraftService drafts, CancellationToken ct) =>
+        {
+            try { return await drafts.DraftAsync(id, user.UserId(), ct) is { } draft ? Results.Ok(draft) : Results.NotFound(); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+        });
+
         return endpoints;
     }
 

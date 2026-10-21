@@ -52,6 +52,9 @@ import { NotifyService } from '../../shared/notify.service';
                 <span class="muted small">Updated {{ e.updatedAt | date:'medium' }}@if (e.jobId) { · <a [routerLink]="['/jobs', e.jobId]">view job</a>}</span>
                 <div class="row">
                   <button mat-button type="button" class="danger" [disabled]="busy()" (click)="remove(e)">Delete</button>
+                  @if (e.kind === 'COVER_LETTER') {
+                    <button mat-stroked-button type="button" [disabled]="busy()" matTooltip="Creates an approval to write the letter as Word + PDF in your resume's style." (click)="requestDocument(e)"><mat-icon class="material-symbols-rounded">description</mat-icon>Generate document</button>
+                  }
                   <button mat-stroked-button type="submit" [disabled]="busy()"><mat-icon class="material-symbols-rounded">save</mat-icon>Save</button>
                   <button mat-flat-button color="primary" type="button" [disabled]="busy()" matTooltip="Saves, then creates an approval request. Nothing is sent until you execute it under Approvals." (click)="requestApproval(e)"><mat-icon class="material-symbols-rounded">fact_check</mat-icon>Request approval to send</button>
                 </div>
@@ -85,6 +88,7 @@ export class EmailsComponent {
 
   save(e: EmailDraft) { return this.run(async () => { await this.api.updateEmail(e.id, { to: e.to, subject: e.subject, body: e.body }); this.notify.success('Saved.'); }); }
   requestApproval(e: EmailDraft) { return this.run(async () => { await this.api.updateEmail(e.id, { to: e.to, subject: e.subject, body: e.body }); await this.api.requestEmailApproval(e.id); this.notify.info('Approval requested. Review it under Approvals.'); }); }
+  requestDocument(e: EmailDraft) { return this.run(async () => { await this.api.updateEmail(e.id, { to: e.to, subject: e.subject, body: e.body }); await this.api.requestCoverLetterDocument(e.id); this.notify.info('Approval requested to generate the cover letter document.'); }); }
   async remove(e: EmailDraft) {
     if (!await this.notify.confirm({ title: 'Delete this draft?', message: e.subject || '(no subject)', confirmLabel: 'Delete', danger: true })) return;
     await this.run(() => this.api.deleteEmail(e.id));

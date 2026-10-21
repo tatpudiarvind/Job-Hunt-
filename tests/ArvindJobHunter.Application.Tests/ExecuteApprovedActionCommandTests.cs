@@ -19,19 +19,101 @@ public sealed class ExecuteApprovedActionCommandTests : IDisposable
     private readonly InMemoryAuditStore auditStore = new();
     private readonly RecordingResumeDocuments documents = new();
     private readonly FakeGmail gmail = new();
+    private readonly InMemoryRepository<SubmissionPackage> submissions = new(s => s.Id);
+    private readonly FakeBrowser browser = new();
 
     public ExecuteApprovedActionCommandTests() => File.WriteAllBytes(masterResume, [1, 2, 3]);
 
     public void Dispose() => File.Delete(masterResume);
 
-    private ExecuteApprovedActionCommand Command(ExecutionMode mode)
+    private ExecuteApprovedActionCommand Command(ExecutionMode mode, IReadOnlyList<SiteSettings>? sites = null)
     {
-        var settings = new FixedSettings(new RuntimeSettings { Mode = mode });
+        var settings = new FixedSettings(new RuntimeSettings { Mode = mode, Sites = sites ?? [] });
         var audit = new AuditService(auditStore, NullLogger<AuditService>.Instance);
         return new ExecuteApprovedActionCommand(
             new ApprovalService(approvals, settings, audit, NullLogger<ApprovalService>.Instance),
             new ExternalActionGuard(), settings, receipts, resumes, drafts, jobs, documents, gmail,
-            new ApplicationService(applications, audit, NullLogger<ApplicationService>.Instance), audit, NullLogger<ExecuteApprovedActionCommand>.Instance, packages);
+            new ApplicationService(applications, audit, NullLogger<ApplicationService>.Instance), audit, NullLogger<ExecuteApprovedActionCommand>.Instance, packages,
+            submissions: submissions, browser: browser);
+    }
+
+    private async Task<(ApprovalRequest Approval, SubmissionPackage Package)> SubmissionApprovalAsync(ExecutionMode mode, string adapter = "company")
+    {
+        var now = DateTimeOffset.UtcNow;
+        var package = new SubmissionPackage(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "https://jobs.example.com/1", adapter, masterResume,
+            ApplicationPackageService.FileHash(masterResume), null, [new SubmissionField("Email", "a@b.com", true, "profile")], [], null,
+            SubmissionStatus.AWAITING_APPROVAL, null, now, now, "session-1");
+        await submissions.UpsertAsync(package, CancellationToken.None);
+        return (await ApprovedAsync(ApprovalActionType.SUBMIT_APPLICATION, package.Id, package.PayloadForApproval(), mode), package);
+    }
+
+    [Theory]
+    [InlineData(ExecutionMode.DEMO)]
+    [InlineData(ExecutionMode.DRY_RUN)]
+    public async Task Submit_InNonLiveModes_NeverClicksSubmit(ExecutionMode mode)
+    {
+        var (approval, _) = await SubmissionApprovalAsync(mode);
+
+        var receipt = await Command(mode).ExecuteAsync(approval.Id, "s1", LocalUser.Id, CancellationToken.None);
+
+        Assert.Equal(ExecutionResult.SUCCESS, receipt.Result);
+        Assert.Equal(0, browser.Submits);
+    }
+
+    [Fact]
+    public async Task Submit_Live_ClicksSubmitAndMarksPackageSubmitted()
+    {
+        var (approval, package) = await SubmissionApprovalAsync(ExecutionMode.LIVE);
+
+        var receipt = await Command(ExecutionMode.LIVE).ExecuteAsync(approval.Id, "s1", LocalUser.Id, CancellationToken.None);
+
+        Assert.Equal(ExecutionResult.SUCCESS, receipt.Result);
+        Assert.Equal(1, browser.Submits);
+        Assert.Equal(SubmissionStatus.SUBMITTED, (await submissions.GetAsync(package.Id, CancellationToken.None))!.Status);
+    }
+
+    [Fact]
+    public async Task Submit_Live_OnDisabledSite_IsBlocked()
+    {
+        var (approval, _) = await SubmissionApprovalAsync(ExecutionMode.LIVE, "linkedin");
+
+        await Assert.ThrowsAsync<ApprovalViolationException>(() => Command(ExecutionMode.LIVE).ExecuteAsync(approval.Id, "s1", LocalUser.Id, CancellationToken.None));
+        Assert.Equal(0, browser.Submits);
+    }
+
+    [Fact]
+    public async Task Submit_Live_WhenAnswersChangedAfterApproval_IsBlocked()
+    {
+        var (approval, package) = await SubmissionApprovalAsync(ExecutionMode.LIVE);
+        await submissions.UpsertAsync(package.Answer(new Dictionary<string, string> { ["Email"] = "other@b.com" }), CancellationToken.None);
+
+        await Assert.ThrowsAsync<ApprovalViolationException>(() => Command(ExecutionMode.LIVE).ExecuteAsync(approval.Id, "s1", LocalUser.Id, CancellationToken.None));
+        Assert.Equal(0, browser.Submits);
+    }
+
+    [Fact]
+    public async Task Submit_Live_WhenResumeFileChanged_IsBlocked()
+    {
+        var (approval, _) = await SubmissionApprovalAsync(ExecutionMode.LIVE);
+        File.WriteAllBytes(masterResume, [9, 9, 9]);
+
+        await Assert.ThrowsAsync<ApprovalViolationException>(() => Command(ExecutionMode.LIVE).ExecuteAsync(approval.Id, "s1", LocalUser.Id, CancellationToken.None));
+        Assert.Equal(0, browser.Submits);
+    }
+
+    private sealed class FakeBrowser : IBrowserApplyClient
+    {
+        public int Submits { get; private set; }
+        public Task<ArvindJobHunter.Contracts.Api.FillPreviewResponse> PrepareAsync(ArvindJobHunter.Contracts.Api.FillPreviewRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task BindAsync(string sessionId, string payloadHash, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<ArvindJobHunter.Contracts.Api.SubmitResponse> SubmitAsync(ArvindJobHunter.Contracts.Api.SubmitRequest request, CancellationToken cancellationToken)
+        {
+            Submits++;
+            return Task.FromResult(new ArvindJobHunter.Contracts.Api.SubmitResponse(true, "Thank you for applying", null));
+        }
+        public Task OpenAsync(string url, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<IReadOnlyList<DownloadedFile>> DownloadsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<DownloadedFile>>([]);
+        public Task<CapturedJobPage?> CaptureAsync(CancellationToken cancellationToken) => Task.FromResult<CapturedJobPage?>(null);
     }
 
     private async Task<ApprovalRequest> ApprovedAsync(ApprovalActionType action, Guid targetId, string payload, ExecutionMode mode)

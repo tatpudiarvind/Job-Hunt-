@@ -69,4 +69,8 @@ public sealed record ApplicationPackage(
     string? CoverLetterHash,
     string PackageHash,
     Guid CreatedBy,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string? ResumeFilePath = null,
+    string? ResumeFileSha256 = null,
+    string? CoverLetterFilePath = null,
+    string? CoverLetterFileSha256 = null);

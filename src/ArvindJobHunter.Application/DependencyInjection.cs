@@ -21,7 +21,11 @@ public static class DependencyInjection
         services.AddScoped<ResumeAnalysisService>();
         services.AddScoped<EmailDraftService>();
         services.AddScoped<AgentRunService>();
-        services.AddScoped(sp => ActivatorUtilities.CreateInstance<ExecuteApprovedActionCommand>(sp, sp.GetRequiredService<IRepository<ArvindJobHunter.Domain.Entities.ApplicationPackage>>()));
+        services.AddScoped(sp => ActivatorUtilities.CreateInstance<ExecuteApprovedActionCommand>(sp,
+            sp.GetRequiredService<IRepository<ArvindJobHunter.Domain.Entities.ApplicationPackage>>(),
+            sp.GetRequiredService<IRepository<ArvindJobHunter.Domain.Entities.SubmissionPackage>>()));
+        services.AddScoped<ApplicationSubmissionService>();
+        services.AddScoped<FollowUpDraftService>();
         services.AddSingleton<ILocalAuthenticationService, LocalAuthenticationService>();
         services.AddSingleton<IExternalActionGuard, ExternalActionGuard>();
         return services;

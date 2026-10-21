@@ -34,13 +34,26 @@ public sealed class JsonRuntimeSettingsProvider(IJsonStore<RuntimeSettings> stor
             }
 
             var loaded = await store.LoadAsync(cancellationToken);
+            var storedKey = await secrets.GetAsync(LlmApiKeySecretName, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(loaded.LlmApiKey))
+            {
+                // Legacy settings.json kept the key in plain text: move it into the protected store once, then scrub the file.
+                if (string.IsNullOrWhiteSpace(storedKey))
+                {
+                    storedKey = loaded.LlmApiKey.Trim();
+                    await secrets.SaveAsync(LlmApiKeySecretName, storedKey, cancellationToken);
+                }
+                await store.SaveAsync(loaded with { LlmApiKey = string.Empty }, cancellationToken);
+                logger?.LogInformation("Migrated the LLM API key from settings.json into the protected secret store");
+            }
+
             var provider = string.IsNullOrWhiteSpace(loaded.LlmProvider) ? defaults.LlmProvider : loaded.LlmProvider;
             cache = loaded with
             {
                 LlmProvider = provider,
                 LlmDisplayName = string.IsNullOrWhiteSpace(loaded.LlmDisplayName) ? provider : loaded.LlmDisplayName,
                 LlmBaseUrl = string.IsNullOrWhiteSpace(loaded.LlmBaseUrl) ? defaults.LlmBaseUrl : loaded.LlmBaseUrl,
-                LlmApiKey = await secrets.GetAsync(LlmApiKeySecretName, cancellationToken) ?? defaults.LlmApiKey,
+                LlmApiKey = storedKey ?? defaults.LlmApiKey,
                 LlmModel = string.IsNullOrWhiteSpace(loaded.LlmModel) ? defaults.LlmModel : loaded.LlmModel,
                 QualificationThreshold = defaults.QualificationThreshold,
                 ApprovalTtlHours = defaults.ApprovalTtlHours

@@ -101,7 +101,7 @@ public sealed class CustomizeResumeTool : IAgentTool<CustomizeResumeInput, IRead
     private sealed record ChangeDto(string? Section, string? OldText, string? NewText, List<string>? Evidence);
 }
 
-public sealed record GenerateEmailInput(Job Job, JobMatch Match, string CandidateName, string Kind, string? Recipient);
+public sealed record GenerateEmailInput(Job Job, JobMatch Match, string CandidateName, string Kind, string? Recipient, IReadOnlyList<CandidateFact>? VerifiedFacts = null);
 
 public sealed record GeneratedEmail(string Subject, string Body);
 
@@ -114,14 +114,18 @@ public sealed class GenerateCoverLetterTool : IAgentTool<GenerateEmailInput, Gen
     public async Task<ToolResult<GeneratedEmail>> ExecuteAsync(GenerateEmailInput input, ToolContext context, CancellationToken cancellationToken)
     {
         var schema = input.Kind == "RECRUITER" ? "RecruiterEmail" : "CoverLetter";
-        var prompt = $"### JOB_TITLE: {input.Job.Title}\n### COMPANY: {input.Job.Company}\n### CANDIDATE_NAME: {input.CandidateName}\n### MATCHED_SKILLS: {string.Join(", ", input.Match.MatchedSkills)}\n\n" +
-                     "Return JSON: {\"subject\":\"\",\"body\":\"\"}";
+        var facts = input.VerifiedFacts is { Count: > 0 } f ? $"### VERIFIED_FACTS:\n{string.Join("\n", f.Take(40).Select(x => $"- {x.FactType}: {x.Name}"))}\n" : "";
+        var country = input.Job.ResolveCountryCode() is { } code ? CountryProfiles.Get(code) : null;
+        var style = country is null ? "" : $"### CONVENTIONS: {country.Name}; {country.Spelling} spelling; keep it under one page.\n";
+        var prompt = $"### JOB_TITLE: {input.Job.Title}\n### COMPANY: {input.Job.Company}\n### CANDIDATE_NAME: {input.CandidateName}\n### MATCHED_SKILLS: {string.Join(", ", input.Match.MatchedSkills)}\n" + facts + style + "\n" +
+                     "Use only the verified facts; do not invent employers, numbers or degrees. Return JSON: {\"subject\":\"\",\"body\":\"\"}";
         var response = await context.Llm.CompleteAsync(new LlmRequest(Prompts.Guardrail, [new("user", prompt)], schema, 0.5), cancellationToken);
         var parsed = LlmJson.Parse<GeneratedEmail>(response.Content);
         if (string.IsNullOrWhiteSpace(parsed.Subject) || string.IsNullOrWhiteSpace(parsed.Body))
         {
             return ToolResult<GeneratedEmail>.Fail("The LLM response did not contain both a subject and a body.");
         }
+        if (country is not null) parsed = parsed with { Body = CountryResumeAdvisor.ToSpelling(parsed.Body, country.Spelling) };
 
         return ToolResult<GeneratedEmail>.Ok(parsed, $"Drafted \"{parsed.Subject}\"");
     }

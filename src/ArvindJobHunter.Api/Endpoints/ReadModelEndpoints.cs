@@ -5,6 +5,7 @@ using ArvindJobHunter.Application.Abstractions;
 using ArvindJobHunter.Application.Features;
 using ArvindJobHunter.Contracts.Api;
 using ArvindJobHunter.Domain;
+using ArvindJobHunter.Domain.Entities;
 using ArvindJobHunter.Infrastructure.Persistence;
 using System.ComponentModel.DataAnnotations;
 
@@ -79,7 +80,7 @@ public static class ReadModelEndpoints
 
             if (errors.Count > 0) return Results.ValidationProblem(errors);
 
-            var updated = new RuntimeSettings
+            var updated = current with
             {
                 Mode = mode,
                 LlmProvider = provider,
@@ -87,9 +88,7 @@ public static class ReadModelEndpoints
                 LlmBaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? current.LlmBaseUrl : baseUrl,
                 LlmApiKey = apiKey,
                 LlmModel = string.IsNullOrWhiteSpace(model) ? current.LlmModel : model,
-                MasterResumePath = request.MasterResumePath ?? current.MasterResumePath,
-                QualificationThreshold = current.QualificationThreshold,
-                ApprovalTtlHours = current.ApprovalTtlHours
+                MasterResumePath = request.MasterResumePath ?? current.MasterResumePath
             };
             await settings.SaveAsync(updated, ct);
             await audit.RecordAsync(user.UserId(), "SETTINGS_UPDATED", "RuntimeSettings", "local", "SUCCESS", $"Mode={updated.Mode}; Llm={updated.LlmProvider}; DisplayName={updated.LlmDisplayName}; BaseUrl={updated.LlmBaseUrl}; Model={updated.LlmModel}", ct);
@@ -166,8 +165,13 @@ public static class ReadModelEndpoints
             return Results.Ok(new GoogleOAuthSettingsResponse(updated.ClientId, updated.RedirectUri, true, true));
         }).WithTags("Settings");
 
-        api.MapPost("/settings/master-resume", async Task<IResult> (HttpRequest request, ClaimsPrincipal user, IRuntimeSettingsProvider settings, ResumeAnalysisService analysis, AuditService audit, CancellationToken ct) =>
+        api.MapPost("/settings/master-resume", async Task<IResult> (HttpRequest request, string? country, ClaimsPrincipal user, IRuntimeSettingsProvider settings, ResumeAnalysisService analysis, AuditService audit, CancellationToken ct) =>
         {
+            var countryCode = CountryProfiles.Normalize(country);
+            if (!string.IsNullOrWhiteSpace(country) && countryCode is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["country"] = [$"Unknown country '{country}'."] });
+            }
             if (!request.HasFormContentType || request.Form.Files.Count != 1)
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["file"] = ["Upload exactly one .docx or .pdf file."] });
@@ -187,7 +191,7 @@ public static class ReadModelEndpoints
             var resumeDirectory = Path.Combine(dataDirectory, "resumes");
             Directory.CreateDirectory(resumeDirectory);
             var safeName = string.Concat(Path.GetFileNameWithoutExtension(file.FileName).Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
-            var targetPath = Path.Combine(resumeDirectory, $"master-{safeName}{extension}");
+            var targetPath = Path.Combine(resumeDirectory, countryCode is null ? $"master-{safeName}{extension}" : $"master-{countryCode}-{safeName}{extension}");
             await using (var target = File.Create(targetPath))
             await using (var source = file.OpenReadStream())
             {
@@ -195,24 +199,31 @@ public static class ReadModelEndpoints
             }
 
             var current = await settings.GetAsync(ct);
-            // Only the path changes; LLM provider, model and API key must survive a resume upload.
-            var updated = new RuntimeSettings
+            if (countryCode is not null)
             {
-                Mode = current.Mode,
-                LlmProvider = current.LlmProvider,
-                LlmDisplayName = current.LlmDisplayName,
-                LlmBaseUrl = current.LlmBaseUrl,
-                LlmApiKey = current.LlmApiKey,
-                LlmModel = current.LlmModel,
-                MasterResumePath = targetPath,
-                QualificationThreshold = current.QualificationThreshold,
-                ApprovalTtlHours = current.ApprovalTtlHours
-            };
+                var map = new Dictionary<string, string>(current.CountryResumePaths, StringComparer.OrdinalIgnoreCase) { [countryCode] = targetPath };
+                await settings.SaveAsync(current with { CountryResumePaths = map }, ct);
+                await audit.RecordAsync(user.UserId(), "COUNTRY_RESUME_UPLOADED", "RuntimeSettings", countryCode, "SUCCESS", $"{file.FileName} -> {targetPath}", ct);
+                return Results.Ok(new { masterResumePath = targetPath, country = countryCode, fileName = file.FileName, size = file.Length, warning = MasterResumeLayout.WarningFor(targetPath) });
+            }
+            // Only the path changes; LLM provider, model and API key must survive a resume upload.
+            var updated = current with { MasterResumePath = targetPath };
             await settings.SaveAsync(updated, ct);
             var summary = await analysis.AnalyzeAndSaveAsync(targetPath, user.UserId(), ct);
             await audit.RecordAsync(user.UserId(), "MASTER_RESUME_UPLOADED", "RuntimeSettings", "local", "SUCCESS", $"{file.FileName} ({file.Length} bytes) -> {targetPath}", ct);
-            return Results.Ok(new { masterResumePath = targetPath, fileName = file.FileName, size = file.Length, analysis = summary });
+            return Results.Ok(new { masterResumePath = targetPath, fileName = file.FileName, size = file.Length, analysis = summary, warning = MasterResumeLayout.WarningFor(targetPath) });
         }).WithTags("Settings").DisableAntiforgery();
+
+        api.MapDelete("/settings/country-resumes/{country}", async Task<IResult> (string country, ClaimsPrincipal user, IRuntimeSettingsProvider settings, AuditService audit, CancellationToken ct) =>
+        {
+            var current = await settings.GetAsync(ct);
+            var code = CountryProfiles.Normalize(country) ?? country;
+            if (!current.CountryResumePaths.ContainsKey(code)) return Results.NotFound();
+            var map = current.CountryResumePaths.Where(p => !string.Equals(p.Key, code, StringComparison.OrdinalIgnoreCase)).ToDictionary(p => p.Key, p => p.Value);
+            await settings.SaveAsync(current with { CountryResumePaths = map }, ct);
+            await audit.RecordAsync(user.UserId(), "COUNTRY_RESUME_REMOVED", "RuntimeSettings", code, "SUCCESS", null, ct);
+            return Results.NoContent();
+        }).WithTags("Settings");
 
         api.MapGet("/data/export", async (ClaimsPrincipal user, DataPortabilityService portability, AuditService audit, CancellationToken ct) =>
         {
@@ -299,7 +310,9 @@ public static class ReadModelEndpoints
         new(current.Mode.ToString(), current.LlmProvider, current.LlmDisplayName, current.LlmBaseUrl,
             !string.IsNullOrWhiteSpace(current.LlmApiKey) || !string.IsNullOrWhiteSpace(openAi.ApiKey),
             current.LlmModel, !string.IsNullOrWhiteSpace(openAi.ApiKey), current.MasterResumePath,
-            !string.IsNullOrWhiteSpace(current.MasterResumePath) && File.Exists(current.MasterResumePath), dataDirectory);
+            !string.IsNullOrWhiteSpace(current.MasterResumePath) && File.Exists(current.MasterResumePath), dataDirectory,
+            MasterResumeLayout.WarningFor(current.MasterResumePath),
+            current.CountryResumePaths.Count == 0 ? null : current.CountryResumePaths.ToDictionary(p => p.Key, p => p.Value));
 
     private static JobSearchPreferencesResponse ToJobSearchPreferencesResponse(JobSearchPreferences preferences) =>
         new(preferences.PreferredCountries, preferences.LinkedInProfileUrl, preferences.ResumeLinkedInProfileUrl,

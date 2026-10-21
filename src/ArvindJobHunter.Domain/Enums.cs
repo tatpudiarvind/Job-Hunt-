@@ -51,7 +51,8 @@ public enum ApprovalActionType
     CREATE_EMAIL_DRAFT,
     SEND_EMAIL,
     SUBMIT_APPLICATION,
-    SEND_FOLLOW_UP
+    SEND_FOLLOW_UP,
+    GENERATE_COVER_LETTER
 }
 
 public enum AgentRunStatus

@@ -64,6 +64,20 @@ public sealed class EmailDraftService(IRepository<EmailDraft> repository, Approv
         return approval;
     }
 
+    /// <summary>Asks approval to write the cover letter as .docx/PDF styled like the resume. Nothing is sent.</summary>
+    public async Task<ApprovalRequest?> RequestDocumentApprovalAsync(Guid id, string? templatePath, Guid userId, CancellationToken cancellationToken)
+    {
+        var draft = await repository.GetAsync(id, cancellationToken);
+        if (draft is null) return null;
+        if (draft.Kind != "COVER_LETTER") throw new ArgumentException("Only cover letters can be generated as documents.");
+        draft = draft.WithTemplate(templatePath);
+        var approval = await approvals.RequestAsync(ApprovalActionType.GENERATE_COVER_LETTER, nameof(EmailDraft), draft.Id, draft.DocumentPayloadForApproval(),
+            $"Generate cover letter \"{draft.Subject}\" as Word and PDF{(templatePath is null ? "" : $" using the style of {Path.GetFileName(templatePath)}")}", userId, cancellationToken);
+        await repository.UpsertAsync(draft.WithApproval(approval.Id), cancellationToken);
+        logger.LogInformation("Approval {ApprovalId} requested to generate cover letter document {DraftId}", approval.Id, id);
+        return approval;
+    }
+
     public async Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken)
     {
         var deleted = await repository.DeleteAsync(id, cancellationToken);
