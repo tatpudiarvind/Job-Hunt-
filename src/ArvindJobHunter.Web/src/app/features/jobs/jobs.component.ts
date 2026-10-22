@@ -3,7 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatExpansionModule } from '@angular/material/expansion';
+import { AccordionModule } from 'primeng/accordion';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { ApiService } from '../../core/api.service';
 import { Job, SkillDemandReport } from '../../core/models';
@@ -23,7 +23,7 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
 @Component({
   selector: 'app-jobs',
   standalone: true,
-  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, MatButtonToggleModule, MatExpansionModule, MatPaginatorModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, MatButtonToggleModule, AccordionModule, MatPaginatorModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Pipeline" title="Jobs" icon="work" subtitle="Showing only roles in the UK, Europe, Singapore and the UAE that explicitly mention visa sponsorship (change countries in Settings). Discover roles from supported public career sites, then review or start the approval-gated apply workflow.">
@@ -73,11 +73,11 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
 
       @if (demand(); as d) {
         <section class="card">
-          <mat-expansion-panel class="demand">
-            <mat-expansion-panel-header>
-              <mat-panel-title><span class="material-symbols-rounded">insights</span>&nbsp;Skills sponsored employers ask for</mat-panel-title>
-              <mat-panel-description>{{ d.postingsMatchingResume }} of {{ d.sponsoredPostings }} sponsored posting(s) match at least 60% of your resume skills</mat-panel-description>
-            </mat-expansion-panel-header>
+          <p-accordion class="demand"><p-accordion-panel value="demand">
+            <p-accordion-header>
+              <span class="panel-title"><span class="material-symbols-rounded">insights</span>&nbsp;Skills sponsored employers ask for</span>
+              <span class="panel-desc">{{ d.postingsMatchingResume }} of {{ d.sponsoredPostings }} sponsored posting(s) match at least 60% of your resume skills</span>
+            </p-accordion-header><p-accordion-content>
             @if (!d.sponsoredPostings) {
               <p class="muted">No sponsored postings in your target countries yet. Run <b>Discover sponsored jobs</b> to collect some.</p>
             } @else {
@@ -93,7 +93,7 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
                 </div>
               }
             }
-          </mat-expansion-panel>
+          </p-accordion-content></p-accordion-panel></p-accordion>
         </section>
       }
 

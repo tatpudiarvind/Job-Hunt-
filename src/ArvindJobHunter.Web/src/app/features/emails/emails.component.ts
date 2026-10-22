@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { MatExpansionModule } from '@angular/material/expansion';
+import { AccordionModule } from 'primeng/accordion';
 import { ApiService } from '../../core/api.service';
 import { EmailDraft } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
@@ -19,7 +19,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
 @Component({
   selector: 'app-emails',
   standalone: true,
-  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, MatExpansionModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, AccordionModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Outreach" title="Email drafts" icon="mail" subtitle="Edit freely — editing resets any prior approval. Sending requires approval and explicit execution, and only happens in LIVE mode with Gmail connected." />
@@ -27,20 +27,20 @@ import { ProgressBarModule } from 'primeng/progressbar';
       @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
       @if (error()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ error() }}</span></div> }
 
-      <mat-accordion>
+      <p-accordion [value]="drafts().length === 1 ? drafts()[0].id : undefined">
         @for (e of drafts(); track e.id) {
-          <mat-expansion-panel [expanded]="drafts().length === 1">
-            <mat-expansion-panel-header>
-              <mat-panel-title class="title">
+          <p-accordion-panel [value]="e.id">
+            <p-accordion-header>
+              <span class="panel-title title">
                 <span class="material-symbols-rounded muted">{{ e.kind === 'COVER_LETTER' ? 'article' : 'outgoing_mail' }}</span>
                 <span class="subject">{{ e.subject || '(no subject)' }}</span>
-              </mat-panel-title>
-              <mat-panel-description class="desc">
+              </span>
+              <span class="panel-desc desc">
                 <app-status-chip [status]="e.kind" />
                 <app-status-chip [status]="e.status" />
                 @if (e.approvalId) { <span class="chip warn">approval requested</span> }
-              </mat-panel-description>
-            </mat-expansion-panel-header>
+              </span>
+            </p-accordion-header><p-accordion-content>
 
             <form class="stack" (ngSubmit)="save(e)">
               <div class="grid-2">
@@ -60,7 +60,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
                 </div>
               </div>
             </form>
-          </mat-expansion-panel>
+          </p-accordion-content></p-accordion-panel>
         } @empty {
           @if (!loaded()) {
             <app-loading-skeleton variant="list" [rows]="3" label="Loading email drafts" />
@@ -68,7 +68,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
           <div class="card empty"><span class="material-symbols-rounded">drafts</span>No drafts yet. Prepare an application or draft a recruiter email from a <a routerLink="/jobs">job</a>.</div>
           }
         }
-      </mat-accordion>
+      </p-accordion>
     </div>
   `,
   styles: [`

@@ -3,7 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatSelectModule } from '@angular/material/select';
-import { MatExpansionModule } from '@angular/material/expansion';
+import { AccordionModule } from 'primeng/accordion';
 import { MatMenuModule } from '@angular/material/menu';
 import { ApiService } from '../../core/api.service';
 import { ApplicationReview, Job, JobApplication, SubmissionPackage } from '../../core/models';
@@ -20,7 +20,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
 @Component({
   selector: 'app-applications',
   standalone: true,
-  imports: [ButtonModule, InputTextModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, MatSelectModule, MatExpansionModule, MatMenuModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, MatSelectModule, AccordionModule, MatMenuModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Tracking" title="Applications" icon="assignment_turned_in" subtitle="Move applications through your pipeline and schedule follow-up reminders. Status changes are local bookkeeping — they never trigger external actions.">
@@ -34,21 +34,21 @@ import { ProgressBarModule } from 'primeng/progressbar';
         <div class="alert warn"><span class="material-symbols-rounded">notifications_active</span><span>{{ due().length }} follow-up{{ due().length === 1 ? '' : 's' }} due now.</span></div>
       }
 
-      <mat-accordion multi>
+      <p-accordion [multiple]="true">
         @for (app of applications(); track app.id) {
-          <mat-expansion-panel>
-            <mat-expansion-panel-header>
-              <mat-panel-title class="title">
+          <p-accordion-panel [value]="app.id">
+            <p-accordion-header>
+              <span class="panel-title title">
                 <span class="job">{{ jobTitle(app.jobId) }}</span>
                 <app-status-chip [status]="app.status" />
-              </mat-panel-title>
-              <mat-panel-description class="desc">
+              </span>
+              <span class="panel-desc desc">
                 @if (app.followUpDueAt) {
                   <span class="row small" [class.overdue]="isDue(app)"><span class="material-symbols-rounded">alarm</span>{{ app.followUpDueAt | date:'MMM d, HH:mm' }}</span>
                 }
                 <span class="muted small">updated {{ app.updatedAt | date:'mediumDate' }}</span>
-              </mat-panel-description>
-            </mat-expansion-panel-header>
+              </span>
+            </p-accordion-header><p-accordion-content>
 
             <div class="body">
               <div class="grid-2">
@@ -143,7 +143,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
                 }
               </div>
             </div>
-          </mat-expansion-panel>
+          </p-accordion-content></p-accordion-panel>
         } @empty {
           @if (!loaded()) {
             <app-loading-skeleton variant="list" [rows]="4" label="Loading applications" />
@@ -151,7 +151,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
           <div class="card empty"><span class="material-symbols-rounded">assignment</span>No applications yet. Prepare an application from a job to start tracking it.</div>
           }
         }
-      </mat-accordion>
+      </p-accordion>
     </div>
   `,
   styles: [`

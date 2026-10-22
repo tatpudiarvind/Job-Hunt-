@@ -1,7 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { DatePipe, SlicePipe } from '@angular/common';
-import { MatTabsModule } from '@angular/material/tabs';
-import { MatBadgeModule } from '@angular/material/badge';
+import { TabsModule } from 'primeng/tabs';
+import { BadgeModule } from 'primeng/badge';
 import { ApiService } from '../../core/api.service';
 import { ApprovalRequest, ExecutionReceipt } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
@@ -16,7 +16,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
 @Component({
   selector: 'app-approvals',
   standalone: true,
-  imports: [ButtonModule, TooltipModule, ProgressBarModule, DatePipe, SlicePipe, MatTabsModule, MatBadgeModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, TooltipModule, ProgressBarModule, DatePipe, SlicePipe, TabsModule, BadgeModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Human in the loop" title="Approvals" icon="fact_check" subtitle="Nothing leaves this machine until you approve it here and then explicitly execute it. Each approval is bound to the exact content you reviewed.">
@@ -26,9 +26,15 @@ import { ProgressBarModule } from 'primeng/progressbar';
       @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
       @if (error()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ error() }}</span></div> }
 
-      <mat-tab-group animationDuration="150ms">
-        <mat-tab>
-          <ng-template mat-tab-label><span [matBadge]="pending().length" [matBadgeHidden]="!pending().length" matBadgeOverlap="false" matBadgeColor="warn">Pending</span></ng-template>
+      <p-tabs value="pending">
+        <p-tablist>
+          <p-tab value="pending">Pending@if (pending().length) { <p-badge [value]="pending().length" severity="warn" /> }</p-tab>
+          <p-tab value="approved">Ready to execute@if (approved().length) { <p-badge [value]="approved().length" severity="info" /> }</p-tab>
+          <p-tab value="receipts">Receipts</p-tab>
+          <p-tab value="history">History</p-tab>
+        </p-tablist>
+        <p-tabpanels>
+        <p-tabpanel value="pending">
           <div class="stack">
             @for (a of pending(); track a.id) {
               <section class="card approval">
@@ -50,10 +56,9 @@ import { ProgressBarModule } from 'primeng/progressbar';
               @else { <div class="card empty"><span class="material-symbols-rounded">task_alt</span>No pending approvals.</div> }
             }
           </div>
-        </mat-tab>
+        </p-tabpanel>
 
-        <mat-tab>
-          <ng-template mat-tab-label><span [matBadge]="approved().length" [matBadgeHidden]="!approved().length" matBadgeOverlap="false" matBadgeColor="primary">Ready to execute</span></ng-template>
+        <p-tabpanel value="approved">
           <div class="stack">
             @if (approved().length) { <div class="alert info"><span class="material-symbols-rounded">info</span><span>Approved actions do nothing until you click Execute. In DEMO and DRY_RUN modes execution is simulated; in LIVE mode it performs the real external action.</span></div> }
             @for (a of approved(); track a.id) {
@@ -69,9 +74,9 @@ import { ProgressBarModule } from 'primeng/progressbar';
               </section>
             } @empty { <div class="card empty"><span class="material-symbols-rounded">hourglass_empty</span>Nothing approved and waiting.</div> }
           </div>
-        </mat-tab>
+        </p-tabpanel>
 
-        <mat-tab label="Receipts">
+        <p-tabpanel value="receipts">
           <section class="card">
             @for (r of receipts(); track r.id) {
               <div class="item">
@@ -87,9 +92,9 @@ import { ProgressBarModule } from 'primeng/progressbar';
               </div>
             } @empty { <div class="empty"><span class="material-symbols-rounded">receipt_long</span>No executions yet.</div> }
           </section>
-        </mat-tab>
+        </p-tabpanel>
 
-        <mat-tab label="History">
+        <p-tabpanel value="history">
           <section class="card">
             @for (a of history(); track a.id) {
               <div class="item">
@@ -102,8 +107,9 @@ import { ProgressBarModule } from 'primeng/progressbar';
               </div>
             } @empty { <div class="empty"><span class="material-symbols-rounded">history</span>No decided approvals yet.</div> }
           </section>
-        </mat-tab>
-      </mat-tab-group>
+        </p-tabpanel>
+      </p-tabpanels>
+      </p-tabs>
     </div>
   `,
   styles: [`

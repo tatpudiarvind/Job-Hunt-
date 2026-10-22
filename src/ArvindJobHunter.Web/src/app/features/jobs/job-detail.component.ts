@@ -2,8 +2,8 @@ import { Component, Input, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { MatTabsModule } from '@angular/material/tabs';
-import { MatExpansionModule } from '@angular/material/expansion';
+import { TabsModule } from 'primeng/tabs';
+import { AccordionModule } from 'primeng/accordion';
 import { ApiService } from '../../core/api.service';
 import { CountryProfile, EmailDraft, Job, JobApplication, ResumeVersion } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
@@ -18,7 +18,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
 @Component({
   selector: 'app-job-detail',
   standalone: true,
-  imports: [ButtonModule, InputTextModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, MatTabsModule, MatExpansionModule, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, TabsModule, AccordionModule, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <a pButton text routerLink="/jobs" class="back"><span class="material-symbols-rounded">arrow_back</span>Jobs</a>
@@ -89,8 +89,15 @@ import { ProgressBarModule } from 'primeng/progressbar';
           </section>
         }
 
-        <mat-tab-group animationDuration="150ms">
-          <mat-tab label="Analysis & match">
+        <p-tabs value="analysis">
+          <p-tablist>
+            <p-tab value="analysis">Analysis &amp; match</p-tab>
+            <p-tab value="resume">Resume &amp; emails</p-tab>
+            <p-tab value="description">Description</p-tab>
+            @if (application()) { <p-tab value="history">History</p-tab> }
+          </p-tablist>
+          <p-tabpanels>
+          <p-tabpanel value="analysis">
             <div class="grid-2">
               <section class="card">
                 <div class="card-title"><span class="material-symbols-rounded">analytics</span>Analysis</div>
@@ -119,9 +126,9 @@ import { ProgressBarModule } from 'primeng/progressbar';
                 } @else { <div class="empty"><span class="material-symbols-rounded">rule</span>Match appears after analysis.</div> }
               </section>
             </div>
-          </mat-tab>
+          </p-tabpanel>
 
-          <mat-tab label="Resume & emails">
+          <p-tabpanel value="resume">
             <div class="stack">
               @for (r of resumes(); track r.id) {
                 <section class="card">
@@ -135,18 +142,18 @@ import { ProgressBarModule } from 'primeng/progressbar';
                     </div>
                   }
                   @if (r.approvalId) { <div class="alert info"><span class="material-symbols-rounded">fact_check</span><span>Approval pending — review and execute it under <a routerLink="/approvals">Approvals</a>. The .docx is written only after execution.</span></div> }
-                  <mat-accordion class="mt">
+                  <p-accordion class="mt">
                     @for (c of r.changes; track $index) {
-                      <mat-expansion-panel>
-                        <mat-expansion-panel-header><mat-panel-title>{{ c.section }}</mat-panel-title></mat-expansion-panel-header>
+                      <p-accordion-panel [value]="$index">
+                        <p-accordion-header><span class="panel-title">{{ c.section }}</span></p-accordion-header><p-accordion-content>
                         <div class="diff">
                           <div class="before"><span class="label">Before</span><p class="pre">{{ c.oldText || '—' }}</p></div>
                           <div class="after"><span class="label">After</span><p class="pre">{{ c.newText }}</p></div>
                         </div>
                         <div class="chips mt"><span class="muted small">Evidence:</span>@for (e of c.evidence; track e) { <span class="chip success">{{ e }}</span> }</div>
-                      </mat-expansion-panel>
+                      </p-accordion-content></p-accordion-panel>
                     }
-                  </mat-accordion>
+                  </p-accordion>
                   @if (r.outputPath) { <p class="muted small mono mt">{{ r.outputPath }}</p> }
                 </section>
               }
@@ -163,22 +170,23 @@ import { ProgressBarModule } from 'primeng/progressbar';
                 <div class="card empty"><span class="material-symbols-rounded">drafts</span>Nothing prepared yet. Use “Prepare application” or draft a recruiter email.</div>
               }
             </div>
-          </mat-tab>
+          </p-tabpanel>
 
-          <mat-tab label="Description">
+          <p-tabpanel value="description">
             <section class="card"><p class="pre">{{ j.description }}</p></section>
-          </mat-tab>
+          </p-tabpanel>
 
           @if (application(); as app) {
-            <mat-tab label="History">
+            <p-tabpanel value="history">
               <section class="card">
                 @for (h of app.history; track h.at) {
                   <div class="item"><div class="row"><span class="muted small">{{ h.at | date:'medium' }}</span><app-status-chip [status]="h.to" /></div><span class="small">{{ h.reason }}</span></div>
                 } @empty { <div class="empty">No transitions yet.</div> }
               </section>
-            </mat-tab>
+            </p-tabpanel>
           }
-        </mat-tab-group>
+        </p-tabpanels>
+        </p-tabs>
       } @else if (!error()) { <app-loading-skeleton variant="detail" [rows]="8" label="Loading job" /> }
     </div>
   `,

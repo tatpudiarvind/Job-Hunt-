@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { MatExpansionModule } from '@angular/material/expansion';
+import { AccordionModule } from 'primeng/accordion';
 import { MatSelectModule } from '@angular/material/select';
 import { MatRadioModule } from '@angular/material/radio';
 import { ApiService } from '../../core/api.service';
@@ -22,7 +22,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, DecimalPipe, FormsModule, MatExpansionModule, MatSelectModule, MatRadioModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, DecimalPipe, FormsModule, AccordionModule, MatSelectModule, MatRadioModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Configuration" title="Settings" icon="settings" subtitle="Control how far the assistant is allowed to go. Changes take effect immediately." />
@@ -252,8 +252,8 @@ import { ProgressBarModule } from 'primeng/progressbar';
               }
             }
 
-            <mat-expansion-panel class="mt advanced">
-              <mat-expansion-panel-header><mat-panel-title>Use an existing file path instead</mat-panel-title></mat-expansion-panel-header>
+            <p-accordion class="mt advanced"><p-accordion-panel value="advanced">
+              <p-accordion-header><span class="panel-title">Use an existing file path instead</span></p-accordion-header><p-accordion-content>
               <form class="stack" (ngSubmit)="save()">
                 <div class="field">
                   <label class="field-label" for="f-resume">Path to .docx or .pdf</label>
@@ -261,7 +261,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
                 </div>
                 <div class="row end"><button pButton outlined type="submit" [disabled]="busy()">Save path</button></div>
               </form>
-            </mat-expansion-panel>
+            </p-accordion-content></p-accordion-panel></p-accordion>
           </section>
 
           <div class="stack">
