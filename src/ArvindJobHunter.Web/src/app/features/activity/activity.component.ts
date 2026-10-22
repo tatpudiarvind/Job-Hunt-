@@ -1,32 +1,31 @@
 import { Component, inject, signal } from '@angular/core';
 import { DatePipe, SlicePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatTableModule } from '@angular/material/table';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../core/api.service';
 import { AgentRun, AuditEvent } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
 import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
+import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
+import { ProgressBarModule } from 'primeng/progressbar';
 
 @Component({
   selector: 'app-activity',
   standalone: true,
-  imports: [DatePipe, SlicePipe, RouterLink, MatIconModule, MatButtonModule, MatProgressBarModule, MatTabsModule, MatExpansionModule, MatTableModule, MatTooltipModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, TooltipModule, ProgressBarModule, DatePipe, SlicePipe, RouterLink, MatTabsModule, MatExpansionModule, MatTableModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Transparency" title="Activity" icon="history" subtitle="Every agent run and every audited action, with tool calls and outcomes.">
-        <button mat-stroked-button (click)="load()" [disabled]="busy()"><mat-icon class="material-symbols-rounded">refresh</mat-icon>Refresh</button>
+        <button pButton outlined (click)="load()" [disabled]="busy()"><span class="material-symbols-rounded">refresh</span>Refresh</button>
       </app-page-header>
 
-      @if (busy()) { <mat-progress-bar mode="indeterminate" /> }
-      @if (error()) { <div class="alert error"><mat-icon class="material-symbols-rounded">error</mat-icon><span>{{ error() }}</span></div> }
+      @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
+      @if (error()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ error() }}</span></div> }
 
       <mat-tab-group animationDuration="150ms">
         <mat-tab label="Agent runs">
@@ -49,10 +48,10 @@ import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.componen
                     @if (r.completedAt) { <span>· finished {{ r.completedAt | date:'mediumTime' }}</span> }
                     @if (r.jobId) { <span>·</span><a [routerLink]="['/jobs', r.jobId]">view job</a> }
                   </div>
-                  @if (r.error) { <div class="alert error"><mat-icon class="material-symbols-rounded">error</mat-icon><span>{{ r.error }}</span></div> }
+                  @if (r.error) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ r.error }}</span></div> }
                   @if (r.toolCalls.length) {
                     <table mat-table [dataSource]="r.toolCalls" class="calls">
-                      <ng-container matColumnDef="ok"><th mat-header-cell *matHeaderCellDef></th><td mat-cell *matCellDef="let c"><mat-icon class="material-symbols-rounded" [class.ok]="c.succeeded" [class.bad]="!c.succeeded">{{ c.succeeded ? 'check_circle' : 'cancel' }}</mat-icon></td></ng-container>
+                      <ng-container matColumnDef="ok"><th mat-header-cell *matHeaderCellDef></th><td mat-cell *matCellDef="let c"><span class="material-symbols-rounded" [class.ok]="c.succeeded" [class.bad]="!c.succeeded">{{ c.succeeded ? 'check_circle' : 'cancel' }}</span></td></ng-container>
                       <ng-container matColumnDef="tool"><th mat-header-cell *matHeaderCellDef>Tool</th><td mat-cell *matCellDef="let c"><b>{{ c.toolName }}</b></td></ng-container>
                       <ng-container matColumnDef="input"><th mat-header-cell *matHeaderCellDef>Input</th><td mat-cell *matCellDef="let c" class="small">{{ c.inputSummary }}</td></ng-container>
                       <ng-container matColumnDef="output"><th mat-header-cell *matHeaderCellDef>Output</th><td mat-cell *matCellDef="let c" class="small">{{ c.outputSummary }}</td></ng-container>
@@ -65,7 +64,7 @@ import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.componen
               </mat-expansion-panel>
             } @empty {
               @if (!loaded()) { <app-loading-skeleton variant="list" [rows]="5" label="Loading agent runs" /> }
-              @else { <div class="card empty"><mat-icon class="material-symbols-rounded">smart_toy</mat-icon>No agent runs yet. Analyze a job to start one.</div> }
+              @else { <div class="card empty"><span class="material-symbols-rounded">smart_toy</span>No agent runs yet. Analyze a job to start one.</div> }
             }
           </mat-accordion>
         </mat-tab>
@@ -78,15 +77,15 @@ import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.componen
                 <div class="what">
                   <div class="row"><b>{{ e.action }}</b><app-status-chip [status]="e.outcome" /><span class="chip">{{ e.targetType }}</span></div>
                   @if (e.details) { <span class="small">{{ e.details }}</span> }
-                  <span class="muted small mono" [matTooltip]="e.targetId">{{ e.targetId }}</span>
+                  <span class="muted small mono" [pTooltip]="e.targetId">{{ e.targetId }}</span>
                   @if (e.correlationId) {
-                    <span class="muted small mono" [matTooltip]="'Correlation id ' + e.correlationId + ' — search for it in the Markdown log (data/logs) to see everything that happened in this request.'">log #{{ e.correlationId | slice:0:12 }}</span>
+                    <span class="muted small mono" [pTooltip]="'Correlation id ' + e.correlationId + ' — search for it in the Markdown log (data/logs) to see everything that happened in this request.'">log #{{ e.correlationId | slice:0:12 }}</span>
                   }
                 </div>
               </div>
             } @empty {
               @if (!loaded()) { <app-loading-skeleton variant="table" [rows]="6" [columns]="3" label="Loading audit log" /> }
-              @else { <div class="empty"><mat-icon class="material-symbols-rounded">receipt_long</mat-icon>No audit events yet.</div> }
+              @else { <div class="empty"><span class="material-symbols-rounded">receipt_long</span>No audit events yet.</div> }
             }
           </section>
         </mat-tab>

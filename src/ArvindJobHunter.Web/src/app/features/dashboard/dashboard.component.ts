@@ -1,26 +1,25 @@
 import { Component, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
 import { ApiService } from '../../core/api.service';
 import { ApprovalRequest, Dashboard, Job, JobApplication, Settings } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
 import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
+import { ButtonModule } from 'primeng/button';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [RouterLink, DatePipe, MatIconModule, MatButtonModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, RouterLink, DatePipe, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Overview" title="Where things stand" icon="space_dashboard" subtitle="A snapshot of your pipeline and what needs your attention.">
-        <a mat-flat-button color="primary" routerLink="/jobs"><mat-icon class="material-symbols-rounded">add</mat-icon>Add a job</a>
+        <a pButton routerLink="/jobs"><span class="material-symbols-rounded">add</span>Add a job</a>
       </app-page-header>
 
-      @if (error()) { <div class="alert error"><mat-icon class="material-symbols-rounded">error</mat-icon><span>{{ error() }}</span></div> }
+      @if (error()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ error() }}</span></div> }
       @if (settings() && !settings()!.masterResumeExists) {
         No master resume on file yet. Upload your .docx or .pdf so the assistant can tailor it per job.
       }
@@ -37,18 +36,18 @@ import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.componen
 
         <div class="grid-2">
           <section class="card">
-            <div class="card-title"><mat-icon class="material-symbols-rounded">fact_check</mat-icon>Pending approvals</div>
+            <div class="card-title"><span class="material-symbols-rounded">fact_check</span>Pending approvals</div>
             @for (a of pending(); track a.id) {
               <div class="item">
                 <div class="row between"><app-status-chip [status]="a.actionType" /><span class="muted small">expires {{ a.expiresAt | date:'medium' }}</span></div>
                 <span>{{ a.summary }}</span>
               </div>
-            } @empty { <div class="empty"><mat-icon class="material-symbols-rounded">task_alt</mat-icon>Nothing waiting on you.</div> }
-            <div class="row end mt"><a mat-button routerLink="/approvals">Open approvals<mat-icon iconPositionEnd class="material-symbols-rounded">arrow_forward</mat-icon></a></div>
+            } @empty { <div class="empty"><span class="material-symbols-rounded">task_alt</span>Nothing waiting on you.</div> }
+            <div class="row end mt"><a pButton text routerLink="/approvals">Open approvals<span class="material-symbols-rounded">arrow_forward</span></a></div>
           </section>
 
           <section class="card">
-            <div class="card-title"><mat-icon class="material-symbols-rounded">star</mat-icon>Top matches</div>
+            <div class="card-title"><span class="material-symbols-rounded">star</span>Top matches</div>
             @for (j of topJobs(); track j.id) {
               <div class="item">
                 <div class="row between">
@@ -57,26 +56,26 @@ import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.componen
                 </div>
                 <span class="muted small">{{ j.company }}@if (j.location) { · {{ j.location }}}</span>
               </div>
-            } @empty { <div class="empty"><mat-icon class="material-symbols-rounded">query_stats</mat-icon>No analyzed jobs yet. <a routerLink="/jobs">Add one</a>.</div> }
+            } @empty { <div class="empty"><span class="material-symbols-rounded">query_stats</span>No analyzed jobs yet. <a routerLink="/jobs">Add one</a>.</div> }
           </section>
 
           <section class="card">
-            <div class="card-title"><mat-icon class="material-symbols-rounded">notifications_active</mat-icon>Follow-ups due</div>
+            <div class="card-title"><span class="material-symbols-rounded">notifications_active</span>Follow-ups due</div>
             @for (f of dueFollowUps(); track f.id) {
               <div class="item">
                 <div class="row between"><a class="title" [routerLink]="['/jobs', f.jobId]">{{ jobTitle(f.jobId) }}</a><app-status-chip [status]="f.status" /></div>
                 <div class="row between">
                   <span class="muted small">due {{ f.followUpDueAt | date:'short' }}@if (f.followUpNote) { · {{ f.followUpNote }}}</span>
-                  <button mat-button [disabled]="drafting() === f.id" (click)="draftFollowUp(f)">Draft email</button>
+                  <button pButton text [disabled]="drafting() === f.id" (click)="draftFollowUp(f)">Draft email</button>
                 </div>
                 @if (drafted() === f.id) { <span class="small">Draft created. <a routerLink="/emails">Review and approve it</a>.</span> }
               </div>
-            } @empty { <div class="empty"><mat-icon class="material-symbols-rounded">notifications_off</mat-icon>No follow-ups due.</div> }
-            <div class="row end mt"><a mat-button routerLink="/applications">Manage applications<mat-icon iconPositionEnd class="material-symbols-rounded">arrow_forward</mat-icon></a></div>
+            } @empty { <div class="empty"><span class="material-symbols-rounded">notifications_off</span>No follow-ups due.</div> }
+            <div class="row end mt"><a pButton text routerLink="/applications">Manage applications<span class="material-symbols-rounded">arrow_forward</span></a></div>
           </section>
 
           <section class="card">
-            <div class="card-title"><mat-icon class="material-symbols-rounded">route</mat-icon>How it works</div>
+            <div class="card-title"><span class="material-symbols-rounded">route</span>How it works</div>
             <ol class="steps">
               <li><b>Add a job</b> by pasting a description or importing from a URL.</li>
               <li><b>Analyze &amp; match</b> against your verified skills.</li>

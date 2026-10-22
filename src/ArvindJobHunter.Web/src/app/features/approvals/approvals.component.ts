@@ -1,9 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { DatePipe, SlicePipe } from '@angular/common';
-import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatBadgeModule } from '@angular/material/badge';
 import { ApiService } from '../../core/api.service';
@@ -13,19 +9,22 @@ import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
 import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 import { NotifyService } from '../../shared/notify.service';
+import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
+import { ProgressBarModule } from 'primeng/progressbar';
 
 @Component({
   selector: 'app-approvals',
   standalone: true,
-  imports: [DatePipe, SlicePipe, MatIconModule, MatButtonModule, MatProgressBarModule, MatTooltipModule, MatTabsModule, MatBadgeModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, TooltipModule, ProgressBarModule, DatePipe, SlicePipe, MatTabsModule, MatBadgeModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Human in the loop" title="Approvals" icon="fact_check" subtitle="Nothing leaves this machine until you approve it here and then explicitly execute it. Each approval is bound to the exact content you reviewed.">
-        <button mat-stroked-button (click)="load()" [disabled]="busy()"><mat-icon class="material-symbols-rounded">refresh</mat-icon>Refresh</button>
+        <button pButton outlined (click)="load()" [disabled]="busy()"><span class="material-symbols-rounded">refresh</span>Refresh</button>
       </app-page-header>
 
-      @if (busy()) { <mat-progress-bar mode="indeterminate" /> }
-      @if (error()) { <div class="alert error"><mat-icon class="material-symbols-rounded">error</mat-icon><span>{{ error() }}</span></div> }
+      @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
+      @if (error()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ error() }}</span></div> }
 
       <mat-tab-group animationDuration="150ms">
         <mat-tab>
@@ -39,16 +38,16 @@ import { NotifyService } from '../../shared/notify.service';
                 </div>
                 <p class="summary pre">{{ a.summary }}</p>
                 <div class="row between">
-                  <span class="muted small mono" matTooltip="Content hash — approval is invalidated if the content changes">#{{ a.payloadHash | slice:0:12 }} · requested {{ a.requestedAt | date:'short' }}</span>
+                  <span class="muted small mono" pTooltip="Content hash — approval is invalidated if the content changes">#{{ a.payloadHash | slice:0:12 }} · requested {{ a.requestedAt | date:'short' }}</span>
                   <div class="row">
-                    <button mat-button [disabled]="busy()" (click)="reject(a)">Reject</button>
-                    <button mat-flat-button color="primary" [disabled]="busy()" (click)="approve(a)"><mat-icon class="material-symbols-rounded">check</mat-icon>Approve</button>
+                    <button pButton text [disabled]="busy()" (click)="reject(a)">Reject</button>
+                    <button pButton [disabled]="busy()" (click)="approve(a)"><span class="material-symbols-rounded">check</span>Approve</button>
                   </div>
                 </div>
               </section>
             } @empty {
               @if (!loaded()) { <app-loading-skeleton variant="cards" [rows]="2" label="Loading approvals" /> }
-              @else { <div class="card empty"><mat-icon class="material-symbols-rounded">task_alt</mat-icon>No pending approvals.</div> }
+              @else { <div class="card empty"><span class="material-symbols-rounded">task_alt</span>No pending approvals.</div> }
             }
           </div>
         </mat-tab>
@@ -56,7 +55,7 @@ import { NotifyService } from '../../shared/notify.service';
         <mat-tab>
           <ng-template mat-tab-label><span [matBadge]="approved().length" [matBadgeHidden]="!approved().length" matBadgeOverlap="false" matBadgeColor="primary">Ready to execute</span></ng-template>
           <div class="stack">
-            @if (approved().length) { <div class="alert info"><mat-icon class="material-symbols-rounded">info</mat-icon><span>Approved actions do nothing until you click Execute. In DEMO and DRY_RUN modes execution is simulated; in LIVE mode it performs the real external action.</span></div> }
+            @if (approved().length) { <div class="alert info"><span class="material-symbols-rounded">info</span><span>Approved actions do nothing until you click Execute. In DEMO and DRY_RUN modes execution is simulated; in LIVE mode it performs the real external action.</span></div> }
             @for (a of approved(); track a.id) {
               <section class="card approval">
                 <div class="row between">
@@ -65,10 +64,10 @@ import { NotifyService } from '../../shared/notify.service';
                 </div>
                 <p class="summary pre">{{ a.summary }}</p>
                 <div class="row end">
-                  <button mat-flat-button [color]="a.mode === 'LIVE' ? 'warn' : 'primary'" [disabled]="busy()" (click)="execute(a)"><mat-icon class="material-symbols-rounded">{{ a.mode === 'LIVE' ? 'bolt' : 'play_arrow' }}</mat-icon>Execute now ({{ a.mode }})</button>
+                  <button pButton [severity]="a.mode === 'LIVE' ? 'danger' : 'primary'" [disabled]="busy()" (click)="execute(a)"><span class="material-symbols-rounded">{{ a.mode === 'LIVE' ? 'bolt' : 'play_arrow' }}</span>Execute now ({{ a.mode }})</button>
                 </div>
               </section>
-            } @empty { <div class="card empty"><mat-icon class="material-symbols-rounded">hourglass_empty</mat-icon>Nothing approved and waiting.</div> }
+            } @empty { <div class="card empty"><span class="material-symbols-rounded">hourglass_empty</span>Nothing approved and waiting.</div> }
           </div>
         </mat-tab>
 
@@ -82,11 +81,11 @@ import { NotifyService } from '../../shared/notify.service';
                 </div>
                 @if (r.message) { <span class="small">{{ r.message }}</span> }
                 <div class="row wrap small">
-                  @if (r.websiteUrl) { <a [href]="r.websiteUrl" target="_blank" rel="noopener noreferrer external">Open application website<mat-icon inline class="material-symbols-rounded">open_in_new</mat-icon></a> }
+                  @if (r.websiteUrl) { <a [href]="r.websiteUrl" target="_blank" rel="noopener noreferrer external">Open application website<span class="material-symbols-rounded">open_in_new</span></a> }
                   @if (r.externalReference) { <span class="muted small mono">ref {{ r.externalReference }}</span> }
                 </div>
               </div>
-            } @empty { <div class="empty"><mat-icon class="material-symbols-rounded">receipt_long</mat-icon>No executions yet.</div> }
+            } @empty { <div class="empty"><span class="material-symbols-rounded">receipt_long</span>No executions yet.</div> }
           </section>
         </mat-tab>
 
@@ -101,7 +100,7 @@ import { NotifyService } from '../../shared/notify.service';
                 <span class="small">{{ a.summary }}</span>
                 @if (a.decisionNote) { <span class="muted small">Note: {{ a.decisionNote }}</span> }
               </div>
-            } @empty { <div class="empty"><mat-icon class="material-symbols-rounded">history</mat-icon>No decided approvals yet.</div> }
+            } @empty { <div class="empty"><span class="material-symbols-rounded">history</span>No decided approvals yet.</div> }
           </section>
         </mat-tab>
       </mat-tab-group>

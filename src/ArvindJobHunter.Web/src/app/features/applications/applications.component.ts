@@ -2,14 +2,8 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatExpansionModule } from '@angular/material/expansion';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
 import { ApiService } from '../../core/api.service';
 import { ApplicationReview, Job, JobApplication, SubmissionPackage } from '../../core/models';
@@ -18,22 +12,26 @@ import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
 import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 import { NotifyService } from '../../shared/notify.service';
+import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
+import { TooltipModule } from 'primeng/tooltip';
+import { ProgressBarModule } from 'primeng/progressbar';
 
 @Component({
   selector: 'app-applications',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatProgressBarModule, MatExpansionModule, MatTooltipModule, MatMenuModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, MatSelectModule, MatExpansionModule, MatMenuModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Tracking" title="Applications" icon="assignment_turned_in" subtitle="Move applications through your pipeline and schedule follow-up reminders. Status changes are local bookkeeping — they never trigger external actions.">
-        <button mat-stroked-button (click)="load()" [disabled]="busy()"><mat-icon class="material-symbols-rounded">refresh</mat-icon>Refresh</button>
+        <button pButton outlined (click)="load()" [disabled]="busy()"><span class="material-symbols-rounded">refresh</span>Refresh</button>
       </app-page-header>
 
-      @if (busy()) { <mat-progress-bar mode="indeterminate" /> }
-      @if (error()) { <div class="alert error"><mat-icon class="material-symbols-rounded">error</mat-icon><span>{{ error() }}</span></div> }
+      @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
+      @if (error()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ error() }}</span></div> }
 
       @if (due().length) {
-        <div class="alert warn"><mat-icon class="material-symbols-rounded">notifications_active</mat-icon><span>{{ due().length }} follow-up{{ due().length === 1 ? '' : 's' }} due now.</span></div>
+        <div class="alert warn"><span class="material-symbols-rounded">notifications_active</span><span>{{ due().length }} follow-up{{ due().length === 1 ? '' : 's' }} due now.</span></div>
       }
 
       <mat-accordion multi>
@@ -46,7 +44,7 @@ import { NotifyService } from '../../shared/notify.service';
               </mat-panel-title>
               <mat-panel-description class="desc">
                 @if (app.followUpDueAt) {
-                  <span class="row small" [class.overdue]="isDue(app)"><mat-icon inline class="material-symbols-rounded">alarm</mat-icon>{{ app.followUpDueAt | date:'MMM d, HH:mm' }}</span>
+                  <span class="row small" [class.overdue]="isDue(app)"><span class="material-symbols-rounded">alarm</span>{{ app.followUpDueAt | date:'MMM d, HH:mm' }}</span>
                 }
                 <span class="muted small">updated {{ app.updatedAt | date:'mediumDate' }}</span>
               </mat-panel-description>
@@ -57,36 +55,36 @@ import { NotifyService } from '../../shared/notify.service';
                 <div class="stack">
                   <h4>Status</h4>
                   <div class="row">
-                    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
-                      <mat-label>Move to</mat-label>
+                    <div class="field">
+                      <label class="field-label">Move to</label>
                       <mat-select [ngModel]="nextStatus[app.id] ?? ''" (ngModelChange)="nextStatus[app.id] = $event">
                         @for (s of statuses(); track s) { @if (s !== app.status) { <mat-option [value]="s">{{ s.replace('_', ' ') }}</mat-option> } }
                       </mat-select>
-                    </mat-form-field>
-                    <button mat-flat-button color="primary" [disabled]="busy() || !nextStatus[app.id]" (click)="transition(app)">Update</button>
+                    </div>
+                    <button pButton [disabled]="busy() || !nextStatus[app.id]" (click)="transition(app)">Update</button>
                   </div>
                   <div class="row wrap">
-                    <a mat-button [routerLink]="['/jobs', app.jobId]">Open job<mat-icon iconPositionEnd class="material-symbols-rounded">arrow_forward</mat-icon></a>
+                    <a pButton text [routerLink]="['/jobs', app.jobId]">Open job<span class="material-symbols-rounded">arrow_forward</span></a>
                     @if (app.resumeVersionId) {
-                      <button mat-stroked-button type="button" [disabled]="busy()" (click)="previewResume(app.resumeVersionId)"><mat-icon class="material-symbols-rounded">preview</mat-icon>Preview resume</button>
+                      <button pButton outlined type="button" [disabled]="busy()" (click)="previewResume(app.resumeVersionId)"><span class="material-symbols-rounded">preview</span>Preview resume</button>
                     }
                   </div>
                 </div>
                 <div class="stack">
                   <h4>Follow-up reminder</h4>
-                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                    <mat-label>Due</mat-label>
-                    <input matInput type="datetime-local" [ngModel]="followUpAt[app.id] ?? ''" (ngModelChange)="followUpAt[app.id] = $event" />
-                  </mat-form-field>
-                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                    <mat-label>Note</mat-label>
-                    <input matInput [ngModel]="followUpNote[app.id] ?? ''" (ngModelChange)="followUpNote[app.id] = $event" placeholder="e.g. Nudge recruiter about next steps" />
-                  </mat-form-field>
+                  <div class="field">
+                    <label class="field-label" for="f-field0">Due</label>
+                    <input id="f-field0" pInputText type="datetime-local" [ngModel]="followUpAt[app.id] ?? ''" (ngModelChange)="followUpAt[app.id] = $event" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label" for="f-field1">Note</label>
+                    <input id="f-field1" pInputText [ngModel]="followUpNote[app.id] ?? ''" (ngModelChange)="followUpNote[app.id] = $event" placeholder="e.g. Nudge recruiter about next steps" />
+                  </div>
                   <div class="row">
-                    <button mat-stroked-button [disabled]="busy() || !followUpAt[app.id]" (click)="schedule(app)"><mat-icon class="material-symbols-rounded">alarm_add</mat-icon>Schedule</button>
-                    <button mat-button [disabled]="busy()" (click)="quickFollowUp(app)">+7 days</button>
-                    <button mat-button [disabled]="busy()" (click)="draftFollowUp(app)" matTooltip="Creates a draft on the Emails page; sending still needs approval">Draft email</button>
-                    @if (app.followUpDueAt) { <button mat-button [disabled]="busy()" (click)="clearFollowUp(app)">Clear</button> }
+                    <button pButton outlined [disabled]="busy() || !followUpAt[app.id]" (click)="schedule(app)"><span class="material-symbols-rounded">alarm_add</span>Schedule</button>
+                    <button pButton text [disabled]="busy()" (click)="quickFollowUp(app)">+7 days</button>
+                    <button pButton text [disabled]="busy()" (click)="draftFollowUp(app)" pTooltip="Creates a draft on the Emails page; sending still needs approval">Draft email</button>
+                    @if (app.followUpDueAt) { <button pButton text [disabled]="busy()" (click)="clearFollowUp(app)">Clear</button> }
                   </div>
                   @if (app.followUpNote) { <span class="muted small">Current note: {{ app.followUpNote }}</span> }
                 </div>
@@ -105,10 +103,10 @@ import { NotifyService } from '../../shared/notify.service';
                     <span class="small">Package v{{ p.version }} · {{ p.packageHash.slice(0, 12) }} · {{ r.packageIsCurrent ? 'current' : 'out of date — content changed' }}</span>
                   } @else { <span class="small muted">No package frozen yet.</span> }
                   <div class="row">
-                    <button mat-flat-button color="primary" [disabled]="busy() || r.issues.length > 0 || r.packageIsCurrent" (click)="freeze(app)"><mat-icon class="material-symbols-rounded">inventory_2</mat-icon>Freeze package</button>
+                    <button pButton [disabled]="busy() || r.issues.length > 0 || r.packageIsCurrent" (click)="freeze(app)"><span class="material-symbols-rounded">inventory_2</span>Freeze package</button>
                   </div>
                 } @else {
-                  <button mat-stroked-button [disabled]="busy()" (click)="review(app)"><mat-icon class="material-symbols-rounded">fact_check</mat-icon>Review before submitting</button>
+                  <button pButton outlined [disabled]="busy()" (click)="review(app)"><span class="material-symbols-rounded">fact_check</span>Review before submitting</button>
                 }
               </div>
               <h4 class="mt">Browser apply</h4>
@@ -117,23 +115,23 @@ import { NotifyService } from '../../shared/notify.service';
                 @for (s of submissionsFor(app); track s.id) {
                   <div class="card stack">
                     <div class="row wrap"><app-status-chip [status]="s.status" /><span class="small">{{ s.adapter }} · {{ s.updatedAt | date:'medium' }}</span>
-                      @if (s.screenshotPath) { <button mat-button (click)="screenshot(s.id)"><mat-icon class="material-symbols-rounded">image</mat-icon>Screenshot</button> }
+                      @if (s.screenshotPath) { <button pButton text (click)="screenshot(s.id)"><span class="material-symbols-rounded">image</span>Screenshot</button> }
                     </div>
                     <span class="small">Resume: {{ s.resumeFilePath }}</span>
                     @for (f of s.fields; track f.label) { <span class="small">{{ f.label }}: <strong>{{ f.value || '—' }}</strong> <span class="muted">({{ f.source }})</span></span> }
                     @if (s.confirmationText) { <span class="small">{{ s.confirmationText }}</span> }
                     @if (s.unansweredFields.length && s.status !== 'SUBMITTED') {
                       @for (q of s.unansweredFields; track q) {
-                        <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>{{ q }}</mat-label>
-                          <input matInput [ngModel]="answerDraft(s.id)[q] ?? ''" (ngModelChange)="answerDraft(s.id)[q] = $event" />
-                        </mat-form-field>
+                        <div class="field"><label class="field-label" for="f-field2">{{ q }}</label>
+                          <input id="f-field2" pInputText [ngModel]="answerDraft(s.id)[q] ?? ''" (ngModelChange)="answerDraft(s.id)[q] = $event" />
+                        </div>
                       }
-                      <div class="row"><button mat-flat-button color="primary" [disabled]="busy()" (click)="answer(s.id)">Save answers</button></div>
+                      <div class="row"><button pButton [disabled]="busy()" (click)="answer(s.id)">Save answers</button></div>
                     }
-                    @if (s.status === 'AWAITING_APPROVAL') { <a mat-button routerLink="/approvals">Review approval<mat-icon iconPositionEnd class="material-symbols-rounded">arrow_forward</mat-icon></a> }
+                    @if (s.status === 'AWAITING_APPROVAL') { <a pButton text routerLink="/approvals">Review approval<span class="material-symbols-rounded">arrow_forward</span></a> }
                   </div>
                 }
-                <div class="row"><button mat-stroked-button [disabled]="busy()" (click)="prepare(app)"><mat-icon class="material-symbols-rounded">open_in_browser</mat-icon>Fill application in browser</button></div>
+                <div class="row"><button pButton outlined [disabled]="busy()" (click)="prepare(app)"><span class="material-symbols-rounded">open_in_browser</span>Fill application in browser</button></div>
               </div>
               <h4 class="mt">History</h4>
               <div class="timeline">
@@ -150,7 +148,7 @@ import { NotifyService } from '../../shared/notify.service';
           @if (!loaded()) {
             <app-loading-skeleton variant="list" [rows]="4" label="Loading applications" />
           } @else {
-          <div class="card empty"><mat-icon class="material-symbols-rounded">assignment</mat-icon>No applications yet. Prepare an application from a job to start tracking it.</div>
+          <div class="card empty"><span class="material-symbols-rounded">assignment</span>No applications yet. Prepare an application from a job to start tracking it.</div>
           }
         }
       </mat-accordion>
