@@ -34,6 +34,7 @@ There is no `development` build configuration in `angular.json`.
 
 ## Remaining
 
-- [ ] 15. Visual/runtime check of each page (`npm start`): login, shell nav, jobs filter and paginator,
+- [ ] 15. Visual/runtime check of each page. The dev server compiles cleanly and serves http://localhost:4200
+  (verified automatically); clicking through each page still has to be done by hand: login, shell nav, jobs filter and paginator,
   profile filter, settings mode radios and selects, applications status select, dialogs and toasts
 - [ ] 16. Optional: push the branch and open a PR
