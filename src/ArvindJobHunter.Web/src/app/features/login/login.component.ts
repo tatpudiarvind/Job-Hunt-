@@ -1,68 +1,65 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { MatCardModule } from '@angular/material/card';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { AuthService } from '../../core/auth.service';
 import { describeError } from '../../core/auth.interceptor';
+import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
+import { ProgressBarModule } from 'primeng/progressbar';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [FormsModule, RouterLink, MatCardModule, MatFormFieldModule, MatInputModule, MatButtonModule, MatIconModule, MatProgressBarModule],
+  imports: [ButtonModule, InputTextModule, ProgressBarModule, FormsModule, RouterLink],
   template: `
     <div class="wrap">
       <aside class="hero">
-        <div class="logo"><mat-icon class="material-symbols-rounded">work</mat-icon></div>
+        <div class="logo"><span class="material-symbols-rounded">work</span></div>
         <h1>Arvind AI Job Hunter</h1>
         <p>An approval-first assistant that analyzes jobs, tailors your resume, and drafts outreach — and never acts externally without your explicit go-ahead.</p>
         <ul>
-          <li><mat-icon class="material-symbols-rounded">lock</mat-icon> Runs locally. Single user. Your data stays on this machine.</li>
-          <li><mat-icon class="material-symbols-rounded">fact_check</mat-icon> Every side effect is proposed, approved, then executed by you.</li>
-          <li><mat-icon class="material-symbols-rounded">history</mat-icon> Complete audit trail of what the agent did and why.</li>
+          <li><span class="material-symbols-rounded">lock</span> Runs locally. Single user. Your data stays on this machine.</li>
+          <li><span class="material-symbols-rounded">fact_check</span> Every side effect is proposed, approved, then executed by you.</li>
+          <li><span class="material-symbols-rounded">history</span> Complete audit trail of what the agent did and why.</li>
         </ul>
       </aside>
-      <mat-card class="panel" appearance="outlined">
-        @if (busy()) { <mat-progress-bar mode="indeterminate" /> }
-        <mat-card-header>
-          <mat-card-title>{{ configured() ? 'Welcome back' : 'No local account yet' }}</mat-card-title>
-          <mat-card-subtitle>{{ configured() ? 'Sign in to continue.' : 'Create your single local account first, then sign in.' }}</mat-card-subtitle>
-        </mat-card-header>
-        <mat-card-content>
+      <section class="card panel">
+        @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
+        <header class="card-header">
+          <h2 class="card-heading">{{ configured() ? 'Welcome back' : 'No local account yet' }}</h2>
+          <p class="muted">{{ configured() ? 'Sign in to continue.' : 'Create your single local account first, then sign in.' }}</p>
+        </header>
+        <div class="card-body">
           @if (!configured()) {
             <div class="empty stack">
-              <div class="alert info"><mat-icon class="material-symbols-rounded">info</mat-icon><span>No local account is configured on this machine yet.</span></div>
-              <a mat-flat-button color="primary" routerLink="/signup" class="submit">Open sign up</a>
+              <div class="alert info"><span class="material-symbols-rounded">info</span><span>No local account is configured on this machine yet.</span></div>
+              <a pButton routerLink="/signup" class="submit">Open sign up</a>
             </div>
           } @else {
             <form class="stack" (ngSubmit)="submit()">
-              <mat-form-field appearance="outline">
-                <mat-label>Username</mat-label>
-                <mat-icon matPrefix class="material-symbols-rounded">person</mat-icon>
-                <input matInput name="username" [(ngModel)]="username" autocomplete="username" required />
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>Password</mat-label>
-                <mat-icon matPrefix class="material-symbols-rounded">key</mat-icon>
-                <input matInput class="password-input" name="password" [type]="show() ? 'text' : 'password'" [(ngModel)]="password" autocomplete="current-password" required minlength="12" />
-                <button mat-icon-button matSuffix type="button" (click)="show.set(!show())" [attr.aria-label]="show() ? 'Hide password' : 'Show password'">
-                  <mat-icon class="material-symbols-rounded">{{ show() ? 'visibility_off' : 'visibility' }}</mat-icon>
+              <div class="field">
+                <label class="field-label" for="f-username">Username</label>
+                <span class="material-symbols-rounded field-prefix">person</span>
+                <input id="f-username" pInputText name="username" [(ngModel)]="username" autocomplete="username" required />
+              </div>
+              <div class="field">
+                <label class="field-label" for="f-password">Password</label>
+                <span class="material-symbols-rounded field-prefix">key</span>
+                <input id="f-password" pInputText class="password-input" name="password" [type]="show() ? 'text' : 'password'" [(ngModel)]="password" autocomplete="current-password" required minlength="12" />
+                <button pButton text rounded severity="secondary" data-icon class="field-suffix" type="button" (click)="show.set(!show())" [attr.aria-label]="show() ? 'Hide password' : 'Show password'">
+                  <span class="material-symbols-rounded">{{ show() ? 'visibility_off' : 'visibility' }}</span>
                 </button>
-              </mat-form-field>
-              @if (message()) { <div class="alert error"><mat-icon class="material-symbols-rounded">error</mat-icon><span>{{ message() }}</span></div> }
-              <button mat-flat-button color="primary" type="submit" class="submit" [disabled]="busy()">Sign in</button>
+              </div>
+              @if (message()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ message() }}</span></div> }
+              <button pButton type="submit" class="submit" [disabled]="busy()">Sign in</button>
             </form>
           }
-        </mat-card-content>
-        <mat-card-actions align="end" class="actions">
-          <a mat-button routerLink="/signup">Sign up</a>
-          <a mat-button routerLink="/forgot-password">Forgot password?</a>
-        </mat-card-actions>
-      </mat-card>
+        </div>
+        <div class="card-actions actions">
+          <a pButton text routerLink="/signup">Sign up</a>
+          <a pButton text routerLink="/forgot-password">Forgot password?</a>
+        </div>
+      </section>
     </div>
   `,
   styles: [`
@@ -72,7 +69,7 @@ import { describeError } from '../../core/auth.interceptor';
     .hero p { opacity: .9; line-height: 1.6; max-width: 36rem; }
     .hero ul { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: .9rem; }
     .hero li { display: flex; gap: .7rem; align-items: flex-start; opacity: .95; line-height: 1.5; }
-    .hero li mat-icon { flex: none; }
+    .hero li .material-symbols-rounded { flex: none; }
     .logo { width: 52px; height: 52px; border-radius: 14px; background: rgba(255,255,255,.15); display: grid; place-items: center; }
     .panel { align-self: center; justify-self: center; width: min(100%, 440px); margin: 2rem; overflow: hidden; }
     .stack { display: grid; gap: 1rem; }
@@ -84,7 +81,7 @@ import { describeError } from '../../core/auth.interceptor';
     :host ::ng-deep .password-input::-ms-clear { display: none; }
     :host ::ng-deep .password-input::-webkit-credentials-auto-fill-button,
     :host ::ng-deep .password-input::-webkit-textfield-decoration-container { margin-right: 0; }
-    mat-card-header { padding-bottom: 1rem; }
+    .card-header { padding-bottom: 1rem; }
     .submit { height: 46px; }
     @media (max-width: 880px) { .wrap { grid-template-columns: 1fr; } .hero { padding: 2.5rem 1.5rem; } }
   `]
