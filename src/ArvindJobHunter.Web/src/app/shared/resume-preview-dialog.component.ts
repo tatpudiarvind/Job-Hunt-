@@ -19,9 +19,9 @@ import { ResumePreview } from '../core/models';
       </div>
       @if (data.templateFidelity; as f) {
         @if (f.templatePreserved) {
-          <div class="alert info mt"><span class="material-symbols-rounded">check_circle</span><span>Template preserved ({{ f.tailoredPageEstimate }} page(s)).</span></div>
-        } @else {
-          <div class="alert warn mt"><span class="material-symbols-rounded">warning</span>
+  <div class="alert info mt"><span class="material-symbols-rounded">check_circle</span><span>Template preserved ({{ f.tailoredPageEstimate }} page(s)).</span></div>
+} @else {
+  <div class="alert warn mt"><span class="material-symbols-rounded">warning</span>
             <div><b>Template check</b>
               <ul class="issues">@for (issue of f.issues; track issue) { <li>{{ issue }}</li> }</ul>
             </div>
