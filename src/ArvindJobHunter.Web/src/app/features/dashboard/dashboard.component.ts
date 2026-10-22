@@ -66,7 +66,7 @@ import { ButtonModule } from 'primeng/button';
                 <div class="row between"><a class="title" [routerLink]="['/jobs', f.jobId]">{{ jobTitle(f.jobId) }}</a><app-status-chip [status]="f.status" /></div>
                 <div class="row between">
                   <span class="muted small">due {{ f.followUpDueAt | date:'short' }}@if (f.followUpNote) { · {{ f.followUpNote }}}</span>
-                  <button pButton text [disabled]="drafting() === f.id" (click)="draftFollowUp(f)">Draft email</button>
+<button pButton text [disabled]="drafting() === f.id" (click)="draftFollowUp(f)">Draft email</button>
                 </div>
                 @if (drafted() === f.id) { <span class="small">Draft created. <a routerLink="/emails">Review and approve it</a>.</span> }
               </div>

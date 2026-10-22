@@ -51,12 +51,12 @@ import { ProgressBarModule } from 'primeng/progressbar';
               <div class="row between">
                 <span class="muted small">Updated {{ e.updatedAt | date:'medium' }}@if (e.jobId) { · <a [routerLink]="['/jobs', e.jobId]">view job</a>}</span>
                 <div class="row">
-                  <button pButton text type="button" class="danger" [disabled]="busy()" (click)="remove(e)">Delete</button>
-                  @if (e.kind === 'COVER_LETTER') {
-                    <button pButton outlined type="button" [disabled]="busy()" pTooltip="Creates an approval to write the letter as Word + PDF in your resume's style." (click)="requestDocument(e)"><span class="material-symbols-rounded">description</span>Generate document</button>
-                  }
-                  <button pButton outlined type="submit" [disabled]="busy()"><span class="material-symbols-rounded">save</span>Save</button>
-                  <button pButton type="button" [disabled]="busy()" pTooltip="Saves, then creates an approval request. Nothing is sent until you execute it under Approvals." (click)="requestApproval(e)"><span class="material-symbols-rounded">fact_check</span>Request approval to send</button>
+<button pButton text type="button" class="danger" [disabled]="busy()" (click)="remove(e)">Delete</button>
+@if (e.kind === 'COVER_LETTER') {
+  <button pButton outlined type="button" [disabled]="busy()" pTooltip="Creates an approval to write the letter as Word + PDF in your resume's style." (click)="requestDocument(e)"><span class="material-symbols-rounded">description</span>Generate document</button>
+}
+<button pButton outlined type="submit" [disabled]="busy()"><span class="material-symbols-rounded">save</span>Save</button>
+<button pButton type="button" [disabled]="busy()" pTooltip="Saves, then creates an approval request. Nothing is sent until you execute it under Approvals." (click)="requestApproval(e)"><span class="material-symbols-rounded">fact_check</span>Request approval to send</button>
                 </div>
               </div>
             </form>

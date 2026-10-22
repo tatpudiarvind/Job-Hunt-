@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { TabsModule } from 'primeng/tabs';
 import { AccordionModule } from 'primeng/accordion';
+import { SelectModule } from 'primeng/select';
 import { ApiService } from '../../core/api.service';
 import { CountryProfile, EmailDraft, Job, JobApplication, ResumeVersion } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
@@ -18,7 +19,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
 @Component({
   selector: 'app-job-detail',
   standalone: true,
-  imports: [ButtonModule, InputTextModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, TabsModule, AccordionModule, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, TabsModule, AccordionModule, SelectModule, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <a pButton text routerLink="/jobs" class="back"><span class="material-symbols-rounded">arrow_back</span>Jobs</a>
@@ -70,12 +71,9 @@ import { ProgressBarModule } from 'primeng/progressbar';
             <div class="row actions">
               <div class="card-title"><span class="material-symbols-rounded">public</span>{{ c.code === 'XX' ? 'Country not detected' : c.name + ' conventions' }}</div>
               <span class="grow"></span>
-              <div class="field">
-                <label class="field-label">Country</label>
-                <select matNativeControl [ngModel]="j.countryCode ?? ''" (ngModelChange)="setCountry($event)" name="country">
-                  <option value="">Auto-detect</option>
-                  @for (o of countryOptions; track o.code) { <option [value]="o.code">{{ o.name }}</option> }
-                </select>
+              <div class="field country">
+                <label class="field-label" for="job-country">Country</label>
+                <p-select inputId="job-country" name="country" [ngModel]="j.countryCode ?? ''" (ngModelChange)="setCountry($event)" [options]="countrySelectOptions" optionLabel="name" optionValue="code" appendTo="body" />
               </div>
             </div>
             <div class="chips">
@@ -224,6 +222,7 @@ export class JobDetailComponent {
     { code: 'DE', name: 'Germany' }, { code: 'NL', name: 'Netherlands' }, { code: 'AU', name: 'Australia' }, { code: 'NZ', name: 'New Zealand' },
     { code: 'AE', name: 'United Arab Emirates' }, { code: 'SG', name: 'Singapore' }, { code: 'IN', name: 'India' }
   ];
+  readonly countrySelectOptions = [{ code: '', name: 'Auto-detect' }, ...this.countryOptions];
   readonly error = signal('');
   readonly busy = signal(false);
   recipient = '';
