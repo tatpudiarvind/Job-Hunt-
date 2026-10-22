@@ -8,6 +8,7 @@
     <Project Path="src/ArvindJobHunter.Infrastructure/ArvindJobHunter.Infrastructure.csproj" />
     <Project Path="src/ArvindJobHunter.Logging/ArvindJobHunter.Logging.csproj" />
     <Project Path="src/ArvindJobHunter.ResumeAutomation/ArvindJobHunter.ResumeAutomation.csproj" />
+    <Project Path="src/ArvindJobHunter.Web/ArvindJobHunter.Web.esproj" />
     <Project Path="src/ArvindJobHunter.Worker/ArvindJobHunter.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
