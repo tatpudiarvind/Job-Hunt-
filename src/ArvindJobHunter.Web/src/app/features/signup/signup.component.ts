@@ -1,66 +1,63 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { MatCardModule } from '@angular/material/card';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { AuthService } from '../../core/auth.service';
 import { describeError } from '../../core/auth.interceptor';
+import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
+import { ProgressBarModule } from 'primeng/progressbar';
 
 @Component({
   selector: 'app-signup',
   standalone: true,
-  imports: [FormsModule, RouterLink, MatCardModule, MatFormFieldModule, MatInputModule, MatButtonModule, MatIconModule, MatProgressBarModule],
+  imports: [ButtonModule, InputTextModule, ProgressBarModule, FormsModule, RouterLink],
   template: `
     <div class="wrap">
-      <mat-card class="panel" appearance="outlined">
-        @if (busy()) { <mat-progress-bar mode="indeterminate" /> }
-        <mat-card-header>
-          <mat-card-title>Create local account</mat-card-title>
-          <mat-card-subtitle>This app supports one local account per machine. Pick a password with at least 12 characters.</mat-card-subtitle>
-        </mat-card-header>
-        <mat-card-content>
+      <section class="card panel">
+        @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
+        <header class="card-header">
+          <h2 class="card-heading">Create local account</h2>
+          <p class="muted">This app supports one local account per machine. Pick a password with at least 12 characters.</p>
+        </header>
+        <div class="card-body">
           @if (configured()) {
             <div class="stack">
-              <div class="alert info"><mat-icon class="material-symbols-rounded">info</mat-icon><span>A local account already exists on this machine. Sign in or use Forgot password to change it.</span></div>
-              <a mat-flat-button color="primary" routerLink="/login" class="submit">Back to sign in</a>
+              <div class="alert info"><span class="material-symbols-rounded">info</span><span>A local account already exists on this machine. Sign in or use Forgot password to change it.</span></div>
+              <a pButton routerLink="/login" class="submit">Back to sign in</a>
             </div>
           } @else {
             <form class="stack" (ngSubmit)="submit()">
-              <mat-form-field appearance="outline">
-                <mat-label>Username</mat-label>
-                <mat-icon matPrefix class="material-symbols-rounded">person</mat-icon>
-                <input matInput name="username" [(ngModel)]="username" autocomplete="username" required />
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>Password</mat-label>
-                <mat-icon matPrefix class="material-symbols-rounded">key</mat-icon>
-                <input matInput class="password-input" name="password" [type]="showPassword() ? 'text' : 'password'" [(ngModel)]="password" autocomplete="new-password" required minlength="12" />
-                <button mat-icon-button matSuffix type="button" (click)="showPassword.set(!showPassword())" [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'">
-                  <mat-icon class="material-symbols-rounded">{{ showPassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
+              <div class="field">
+                <label class="field-label" for="f-username">Username</label>
+                <span class="material-symbols-rounded field-prefix">person</span>
+                <input id="f-username" pInputText name="username" [(ngModel)]="username" autocomplete="username" required />
+              </div>
+              <div class="field">
+                <label class="field-label" for="f-password">Password</label>
+                <span class="material-symbols-rounded field-prefix">key</span>
+                <input id="f-password" pInputText class="password-input" name="password" [type]="showPassword() ? 'text' : 'password'" [(ngModel)]="password" autocomplete="new-password" required minlength="12" />
+                <button pButton text rounded severity="secondary" data-icon class="field-suffix" type="button" (click)="showPassword.set(!showPassword())" [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'">
+                  <span class="material-symbols-rounded">{{ showPassword() ? 'visibility_off' : 'visibility' }}</span>
                 </button>
-                <mat-hint>Minimum 12 characters</mat-hint>
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>Confirm password</mat-label>
-                <mat-icon matPrefix class="material-symbols-rounded">password</mat-icon>
-                <input matInput class="password-input" name="confirmPassword" [type]="showConfirm() ? 'text' : 'password'" [(ngModel)]="confirmPassword" autocomplete="new-password" required minlength="12" />
-                <button mat-icon-button matSuffix type="button" (click)="showConfirm.set(!showConfirm())" [attr.aria-label]="showConfirm() ? 'Hide password' : 'Show password'">
-                  <mat-icon class="material-symbols-rounded">{{ showConfirm() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                <small class="field-hint">Minimum 12 characters</small>
+              </div>
+              <div class="field">
+                <label class="field-label" for="f-confirmPassword">Confirm password</label>
+                <span class="material-symbols-rounded field-prefix">password</span>
+                <input id="f-confirmPassword" pInputText class="password-input" name="confirmPassword" [type]="showConfirm() ? 'text' : 'password'" [(ngModel)]="confirmPassword" autocomplete="new-password" required minlength="12" />
+                <button pButton text rounded severity="secondary" data-icon class="field-suffix" type="button" (click)="showConfirm.set(!showConfirm())" [attr.aria-label]="showConfirm() ? 'Hide password' : 'Show password'">
+                  <span class="material-symbols-rounded">{{ showConfirm() ? 'visibility_off' : 'visibility' }}</span>
                 </button>
-              </mat-form-field>
-              @if (message()) { <div class="alert error"><mat-icon class="material-symbols-rounded">error</mat-icon><span>{{ message() }}</span></div> }
-              <button mat-flat-button color="primary" type="submit" class="submit" [disabled]="busy()">Create account & sign in</button>
+              </div>
+              @if (message()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ message() }}</span></div> }
+              <button pButton type="submit" class="submit" [disabled]="busy()">Create account & sign in</button>
             </form>
           }
-        </mat-card-content>
-        <mat-card-actions align="end" class="actions">
-          <a mat-button routerLink="/login">Back to sign in</a>
-        </mat-card-actions>
-      </mat-card>
+        </div>
+        <div class="card-actions actions">
+          <a pButton text routerLink="/login">Back to sign in</a>
+        </div>
+      </section>
     </div>
   `,
   styles: [`

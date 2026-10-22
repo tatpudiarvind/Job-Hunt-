@@ -1,19 +1,18 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
-import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { SelectModule } from 'primeng/select';
+import { SelectButtonModule } from 'primeng/selectbutton';
 import { ApiService } from '../../core/api.service';
 import { CandidateFact, CandidateProfile } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
+import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 import { NotifyService } from '../../shared/notify.service';
+import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
+import { TooltipModule } from 'primeng/tooltip';
+import { ProgressBarModule } from 'primeng/progressbar';
 
 const FACT_TYPES = ['SKILL', 'EXPERIENCE', 'EDUCATION', 'CERTIFICATION', 'LANGUAGE', 'ACHIEVEMENT'];
 
@@ -24,50 +23,48 @@ function blankProfile(): CandidateProfile {
 @Component({
   selector: 'app-profile',
   standalone: true,
-  imports: [FormsModule, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatProgressBarModule, MatTooltipModule, MatButtonToggleModule, PageHeaderComponent],
+  imports: [ButtonModule, InputTextModule, TooltipModule, ProgressBarModule, FormsModule, SelectModule, SelectButtonModule, PageHeaderComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Truth layer" title="Profile & verified facts" icon="person" subtitle="Only verified facts are used for matching and resume tailoring. The agent cannot invent experience you have not recorded here." />
 
-      @if (busy()) { <mat-progress-bar mode="indeterminate" /> }
-      @if (error()) { <div class="alert error"><mat-icon class="material-symbols-rounded">error</mat-icon><span>{{ error() }}</span></div> }
+      @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
+      @if (error()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ error() }}</span></div> }
 
       <div class="layout">
         <div class="stack">
           @if (profile(); as p) {
             <section class="card">
-              <div class="card-title"><mat-icon class="material-symbols-rounded">badge</mat-icon>Profile</div>
+              <div class="card-title"><span class="material-symbols-rounded">badge</span>Profile</div>
               <form class="stack" (ngSubmit)="saveProfile()">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Name</mat-label><input matInput name="name" [(ngModel)]="p.name" required /></mat-form-field>
-                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Current role</mat-label><input matInput name="role" [(ngModel)]="p.currentRole" required /></mat-form-field>
-                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Current company</mat-label><input matInput name="company" [(ngModel)]="p.currentCompany" /></mat-form-field>
-                <div class="row end"><button mat-flat-button color="primary" type="submit" [disabled]="busy()">Save profile</button></div>
+                <div class="field"><label class="field-label" for="f-name">Name</label><input id="f-name" pInputText name="name" [(ngModel)]="p.name" required /></div>
+                <div class="field"><label class="field-label" for="f-role">Current role</label><input id="f-role" pInputText name="role" [(ngModel)]="p.currentRole" required /></div>
+                <div class="field"><label class="field-label" for="f-company">Current company</label><input id="f-company" pInputText name="company" [(ngModel)]="p.currentCompany" /></div>
+                <div class="row end"><button pButton type="submit" [disabled]="busy()">Save profile</button></div>
               </form>
             </section>
+          } @else if (!loaded()) {
+            <app-loading-skeleton variant="form" [rows]="3" label="Loading profile" />
           }
           <section class="card">
-            <div class="card-title"><mat-icon class="material-symbols-rounded">add_circle</mat-icon>Add a fact</div>
+            <div class="card-title"><span class="material-symbols-rounded">add_circle</span>Add a fact</div>
             <form class="stack" (ngSubmit)="addFact()">
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>Type</mat-label>
-                <mat-select name="type" [(ngModel)]="fact.factType">@for (t of types; track t) { <mat-option [value]="t">{{ t }}</mat-option> }</mat-select>
-              </mat-form-field>
-              <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Name</mat-label><input matInput name="fname" [(ngModel)]="fact.name" required placeholder="e.g. Kubernetes" /></mat-form-field>
-              <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Value</mat-label><input matInput name="fvalue" [(ngModel)]="fact.value" required placeholder="e.g. 3 years, production clusters at Acme" /></mat-form-field>
-              <mat-form-field appearance="outline"><mat-label>Evidence / source</mat-label><input matInput name="fsrc" [(ngModel)]="fact.sourceReference" placeholder="e.g. Resume 2025 §Experience" /><mat-hint>Where this can be verified</mat-hint></mat-form-field>
-              <div class="row end"><button mat-stroked-button type="submit" [disabled]="busy() || !fact.name || !fact.value">Add as unverified</button></div>
+              <div class="field">
+                <label class="field-label" for="fact-type">Type</label>
+                <p-select inputId="fact-type" name="type" [(ngModel)]="fact.factType" [options]="types" appendTo="body" />
+              </div>
+              <div class="field"><label class="field-label" for="f-fname">Name</label><input id="f-fname" pInputText name="fname" [(ngModel)]="fact.name" required placeholder="e.g. Kubernetes" /></div>
+              <div class="field"><label class="field-label" for="f-fvalue">Value</label><input id="f-fvalue" pInputText name="fvalue" [(ngModel)]="fact.value" required placeholder="e.g. 3 years, production clusters at Acme" /></div>
+              <div class="field"><label class="field-label" for="f-fsrc">Evidence / source</label><input id="f-fsrc" pInputText name="fsrc" [(ngModel)]="fact.sourceReference" placeholder="e.g. Resume 2025 §Experience" /><small class="field-hint">Where this can be verified</small></div>
+              <div class="row end"><button pButton outlined type="submit" [disabled]="busy() || !fact.name || !fact.value">Add as unverified</button></div>
             </form>
           </section>
         </div>
 
         <section class="card">
           <div class="row between toolbar">
-            <div class="card-title no-mb"><mat-icon class="material-symbols-rounded">verified</mat-icon>Facts <span class="muted">({{ facts().length }})</span></div>
-            <mat-button-toggle-group [value]="filter()" (change)="filter.set($event.value)" hideSingleSelectionIndicator>
-              <mat-button-toggle value="ALL">All</mat-button-toggle>
-              <mat-button-toggle value="VERIFIED">Verified ({{ verifiedCount() }})</mat-button-toggle>
-              <mat-button-toggle value="UNVERIFIED">Unverified ({{ facts().length - verifiedCount() }})</mat-button-toggle>
-            </mat-button-toggle-group>
+            <div class="card-title no-mb"><span class="material-symbols-rounded">verified</span>Facts <span class="muted">({{ facts().length }})</span></div>
+            <p-selectbutton [options]="filterOptions()" [ngModel]="filter()" (ngModelChange)="filter.set($event)" optionLabel="label" optionValue="value" [allowEmpty]="false" aria-label="Filter facts" />
           </div>
           @for (f of visible(); track f.id) {
             <div class="item fact">
@@ -79,12 +76,15 @@ function blankProfile(): CandidateProfile {
                 @if (f.sourceReference) { <span class="muted small">Source: {{ f.sourceReference }}</span> }
               </div>
               <div class="row side">
-                @if (!f.isVerified) { <button mat-stroked-button [disabled]="busy()" (click)="verify(f)">Mark verified</button> }
-                @else { <button mat-button [disabled]="busy()" (click)="invalidate(f)">Mark unverified</button> }
-                <button mat-icon-button matTooltip="Delete" [disabled]="busy()" (click)="remove(f)"><mat-icon class="material-symbols-rounded">delete</mat-icon></button>
+                @if (!f.isVerified) { <button pButton outlined [disabled]="busy()" (click)="verify(f)">Mark verified</button> }
+                @else { <button pButton text [disabled]="busy()" (click)="invalidate(f)">Mark unverified</button> }
+                <button pButton text rounded severity="secondary" data-icon pTooltip="Delete" [disabled]="busy()" (click)="remove(f)"><span class="material-symbols-rounded">delete</span></button>
               </div>
             </div>
-          } @empty { <div class="empty"><mat-icon class="material-symbols-rounded">fact_check</mat-icon>{{ facts().length ? 'No facts match this filter.' : 'No facts yet — add your skills and experience to the left.' }}</div> }
+          } @empty {
+            @if (!loaded()) { <app-loading-skeleton variant="list" [rows]="4" label="Loading facts" /> }
+            @else { <div class="empty"><span class="material-symbols-rounded">fact_check</span>{{ facts().length ? 'No facts match this filter.' : 'No facts yet — add your skills and experience to the left.' }}</div> }
+          }
         </section>
       </div>
     </div>
@@ -108,8 +108,14 @@ export class ProfileComponent {
   readonly facts = signal<CandidateFact[]>([]);
   readonly error = signal('');
   readonly busy = signal(false);
+  readonly loaded = signal(false);
   readonly filter = signal<'ALL' | 'VERIFIED' | 'UNVERIFIED'>('ALL');
   readonly verifiedCount = computed(() => this.facts().filter(f => f.isVerified).length);
+  readonly filterOptions = computed(() => [
+    { label: 'All', value: 'ALL' },
+    { label: `Verified (${this.verifiedCount()})`, value: 'VERIFIED' },
+    { label: `Unverified (${this.facts().length - this.verifiedCount()})`, value: 'UNVERIFIED' }
+  ]);
   readonly visible = computed(() => { const f = this.filter(); return this.facts().filter(x => f === 'ALL' || (f === 'VERIFIED') === x.isVerified); });
   fact = { factType: 'SKILL', name: '', value: '', sourceReference: '' };
 
@@ -128,6 +134,7 @@ export class ProfileComponent {
       this.facts.set(f);
     }
     catch (e) { this.error.set(describeError(e)); }
+    finally { this.loaded.set(true); }
   }
 
   saveProfile() { const p = this.profile()!; return this.run(async () => { await this.api.updateProfile({ name: p.name, currentRole: p.currentRole, currentCompany: p.currentCompany || null }); this.notify.success('Profile saved.'); }); }

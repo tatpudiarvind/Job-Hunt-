@@ -1,20 +1,13 @@
-@use '@angular/material' as mat;
+@use 'primeng-layout';
+
+/* PrimeNG styles live in a low-priority cascade layer so app styles keep precedence. */
+@layer primeng;
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0&display=swap');
 
 html {
   color-scheme: light;
-  @include mat.theme((
-    color: (
-      primary: mat.$azure-palette,
-      tertiary: mat.$green-palette,
-    ),
-    typography: (
-      plain-family: 'Inter, system-ui, sans-serif',
-      brand-family: 'Inter, system-ui, sans-serif',
-    ),
-    density: 0,
-  ));
+  font-family: Inter, system-ui, sans-serif;
 }
 
 :root {
@@ -141,18 +134,3 @@ p { margin: 0; }
 /* Empty state */
 .empty { text-align: center; color: var(--ajh-muted); padding: 2rem 1rem; display: grid; gap: .5rem; justify-items: center; }
 .empty .material-symbols-rounded { font-size: 2.5rem; opacity: .5; }
-
-/* Tables */
-table.mat-mdc-table { width: 100%; background: transparent; }
-.mat-mdc-table .mat-mdc-header-cell { color: var(--ajh-muted); font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-.mat-mdc-row:hover { background: #f7f9fc; }
-
-/* Material tweaks */
-.mat-mdc-card { border-radius: var(--ajh-radius) !important; }
-.mat-mdc-form-field { width: 100%; }
-.mat-mdc-snack-bar-container.success .mdc-snackbar__surface { background: var(--ajh-success); }
-.mat-mdc-snack-bar-container.error .mdc-snackbar__surface { background: var(--ajh-danger); }
-.mat-mdc-dialog-surface { border-radius: var(--ajh-radius) !important; }
-.mat-expansion-panel { border-radius: var(--ajh-radius) !important; box-shadow: var(--ajh-shadow) !important; border: 1px solid var(--ajh-border); }
-.mat-expansion-panel:not(.mat-expanded) + .mat-expansion-panel { margin-top: .75rem; }
-.mat-mdc-tab-body-content { padding-top: 1.25rem; }

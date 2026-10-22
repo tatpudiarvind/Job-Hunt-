@@ -1,0 +1,47 @@
+/* Shared layout for PrimeNG-based UI (replaces Angular Material form-field, card, dialog and progress-bar styling). */
+
+/* Dialog layout (PrimeNG DynamicDialog content) */
+.dialog-title { font-size: 1.2rem; gap: .5rem; margin-bottom: 1rem; }
+.dialog-content { display: grid; gap: .5rem; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1.25rem; }
+.p-dynamicdialog { border-radius: var(--ajh-radius); }
+.p-dynamicdialog .p-dialog-content { padding-top: 1.25rem; }
+
+/* Card sub-parts */
+.card-header { display: grid; gap: .25rem; margin-bottom: 1rem; }
+.card-heading { font-size: 1.25rem; }
+.card-body { display: grid; gap: 1rem; }
+.card-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .25rem; margin-top: 1rem; }
+
+/* Form fields */
+.field {
+  position: relative; display: grid; gap: .35rem; width: 100%;
+  > .field-label { font-size: .82rem; font-weight: 600; color: var(--ajh-muted); }
+  > input, > textarea, > p-select, > p-multiselect, > p-inputnumber { width: 100%; }
+  > .field-hint { font-size: .75rem; color: var(--ajh-muted); }
+  > .field-prefix, > .field-suffix { position: absolute; top: calc(.82rem * 1.5 + .35rem + 1.25rem); transform: translateY(-50%); }
+  > .field-prefix { left: .75rem; color: var(--ajh-muted); font-size: 1.25rem; pointer-events: none; }
+  > .field-suffix { right: .25rem; }
+  &:has(> .field-prefix) > input { padding-left: 2.5rem; }
+  &:has(> .field-suffix) > input { padding-right: 3rem; }
+  > input { height: 2.5rem; }
+}
+p-select, p-multiselect { width: 100%; }
+
+/* Buttons with Material Symbols content */
+.p-button { gap: .4rem; }
+.p-button .material-symbols-rounded { font-size: 1.2rem; }
+.p-button[data-icon] { width: 2.5rem; height: 2.5rem; padding: 0; justify-content: center; }
+
+/* Busy indicator */
+.busy-bar.p-progressbar { height: 4px; border-radius: 0; }
+
+/* Tabs / accordion spacing */
+.p-tabpanels { padding: 1.25rem 0 0; background: transparent; }
+.p-accordion .p-accordionpanel { border: 1px solid var(--ajh-border); border-radius: var(--ajh-radius); background: var(--ajh-surface); box-shadow: var(--ajh-shadow); overflow: hidden; }
+.p-accordion .p-accordionpanel + .p-accordionpanel { margin-top: .75rem; }
+
+/* Tables */
+.p-datatable { width: 100%; }
+.p-datatable .p-datatable-thead > tr > th { color: var(--ajh-muted); font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; background: transparent; }
+.p-datatable .p-datatable-tbody > tr:hover { background: #f7f9fc; }

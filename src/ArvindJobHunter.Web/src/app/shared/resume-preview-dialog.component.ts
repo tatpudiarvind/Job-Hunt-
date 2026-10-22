@@ -1,28 +1,27 @@
 import { Component, inject } from '@angular/core';
-import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
+import { DynamicDialogConfig, DynamicDialogRef } from 'primeng/dynamicdialog';
+import { ButtonModule } from 'primeng/button';
 import { ResumePreview } from '../core/models';
 
 @Component({
   selector: 'app-resume-preview-dialog',
   standalone: true,
-  imports: [MatDialogModule, MatButtonModule, MatIconModule],
+  imports: [ButtonModule],
   template: `
-    <h2 mat-dialog-title class="row">
-      <mat-icon class="material-symbols-rounded">preview</mat-icon>
+    <h2 class="dialog-title row">
+      <span class="material-symbols-rounded">preview</span>
       Resume preview
     </h2>
-    <mat-dialog-content>
+    <div class="dialog-content">
       <div class="summary">
         <span class="chip">{{ data.status }}</span>
         <span class="muted small">Paragraphs: {{ data.paragraphs.length }}</span>
       </div>
       @if (data.templateFidelity; as f) {
         @if (f.templatePreserved) {
-          <div class="alert info mt"><mat-icon class="material-symbols-rounded">check_circle</mat-icon><span>Template preserved ({{ f.tailoredPageEstimate }} page(s)).</span></div>
-        } @else {
-          <div class="alert warn mt"><mat-icon class="material-symbols-rounded">warning</mat-icon>
+  <div class="alert info mt"><span class="material-symbols-rounded">check_circle</span><span>Template preserved ({{ f.tailoredPageEstimate }} page(s)).</span></div>
+} @else {
+  <div class="alert warn mt"><span class="material-symbols-rounded">warning</span>
             <div><b>Template check</b>
               <ul class="issues">@for (issue of f.issues; track issue) { <li>{{ issue }}</li> }</ul>
             </div>
@@ -39,10 +38,10 @@ import { ResumePreview } from '../core/models';
           <div class="empty">No preview content was returned.</div>
         }
       </div>
-    </mat-dialog-content>
-    <mat-dialog-actions align="end">
-      <button mat-flat-button color="primary" (click)="ref.close()">Close</button>
-    </mat-dialog-actions>
+    </div>
+    <div class="dialog-actions">
+      <p-button label="Close" (onClick)="ref.close()" />
+    </div>
   `,
   styles: [`
     .summary { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
@@ -54,6 +53,6 @@ import { ResumePreview } from '../core/models';
   `]
 })
 export class ResumePreviewDialogComponent {
-  readonly data = inject<ResumePreview>(MAT_DIALOG_DATA);
-  readonly ref = inject(MatDialogRef<ResumePreviewDialogComponent>);
+  readonly data = inject<DynamicDialogConfig<ResumePreview>>(DynamicDialogConfig).data!;
+  readonly ref = inject(DynamicDialogRef);
 }

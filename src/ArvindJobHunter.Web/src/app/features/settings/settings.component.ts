@@ -2,58 +2,59 @@ import { Component, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { MatExpansionModule } from '@angular/material/expansion';
-import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatRadioModule } from '@angular/material/radio';
+import { AccordionModule } from 'primeng/accordion';
+import { SelectModule } from 'primeng/select';
+import { MultiSelectModule } from 'primeng/multiselect';
+import { RadioButtonModule } from 'primeng/radiobutton';
 import { ApiService } from '../../core/api.service';
 import { GoogleOAuthSettings, GoogleStatus, JobSearchPreferences, Settings, SiteSetting } from '../../core/models';
 import { SettingsStateService } from '../../core/settings-state.service';
 import { describeError } from '../../core/auth.interceptor';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { StatusChipComponent } from '../../shared/status-chip.component';
+import { LoadingSkeletonComponent } from '../../shared/loading-skeleton.component';
 import { NotifyService } from '../../shared/notify.service';
+import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
+import { TextareaModule } from 'primeng/textarea';
+import { TooltipModule } from 'primeng/tooltip';
+import { ProgressBarModule } from 'primeng/progressbar';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [DecimalPipe, FormsModule, MatExpansionModule, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatProgressBarModule, MatTooltipModule, MatRadioModule, PageHeaderComponent, StatusChipComponent],
+  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, DecimalPipe, FormsModule, AccordionModule, SelectModule, MultiSelectModule, RadioButtonModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Configuration" title="Settings" icon="settings" subtitle="Control how far the assistant is allowed to go. Changes take effect immediately." />
 
-      @if (busy()) { <mat-progress-bar mode="indeterminate" /> }
-      @if (error()) { <div class="alert error"><mat-icon class="material-symbols-rounded">error</mat-icon><span>{{ error() }}</span></div> }
+      @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
+      @if (error()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ error() }}</span></div> }
 
       @if (settings(); as s) {
         <section class="card stack">
-          <div class="card-title"><span class="row gap-sm"><mat-icon class="material-symbols-rounded">open_in_browser</mat-icon>Browser auto-apply sites</span></div>
+          <div class="card-title"><span class="row gap-sm"><span class="material-symbols-rounded">open_in_browser</span>Browser auto-apply sites</span></div>
           <span class="muted small">Sites the visible browser may submit on (after your approval), with a daily cap. Log in, MFA and CAPTCHA are always done by you.</span>
           @for (site of sites(); track site.adapter) {
             <div class="row">
               <label class="row grow"><input type="checkbox" [(ngModel)]="site.enabled" [name]="'site-' + site.adapter" /> <b>{{ site.adapter }}</b> <span class="muted small">{{ site.submittedToday }} submitted today</span></label>
-              <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Daily cap</mat-label><input matInput type="number" min="0" max="100" [(ngModel)]="site.dailyCap" [name]="'cap-' + site.adapter" /></mat-form-field>
+              <div class="field"><label class="field-label" for="f-site-dailyCap">Daily cap</label><input id="f-site-dailyCap" pInputText type="number" min="0" max="100" [(ngModel)]="site.dailyCap" [name]="'cap-' + site.adapter" /></div>
             </div>
           }
-          <div class="row"><button mat-flat-button color="primary" type="button" [disabled]="busy()" (click)="saveSites()">Save sites</button></div>
+          <div class="row"><button pButton type="button" [disabled]="busy()" (click)="saveSites()">Save sites</button></div>
         </section>
         <section class="card stack">
-          <div class="card-title"><span class="row gap-sm"><mat-icon class="material-symbols-rounded">description</mat-icon>Resume library (ResumeNow)</span></div>
+          <div class="card-title"><span class="row gap-sm"><span class="material-symbols-rounded">description</span>Resume library (ResumeNow)</span></div>
           <span class="muted small">Opens ResumeNow in the browser window. Edit and download your PDF there yourself, then import it here so auto-apply can pick it by keyword.</span>
           <div class="row wrap">
-            <button mat-stroked-button type="button" [disabled]="busy()" (click)="openResumeNow()"><mat-icon class="material-symbols-rounded">open_in_browser</mat-icon>Open ResumeNow</button>
-            <button mat-button type="button" [disabled]="busy()" (click)="loadDownloads()">Refresh downloads</button>
+            <button pButton outlined type="button" [disabled]="busy()" (click)="openResumeNow()"><span class="material-symbols-rounded">open_in_browser</span>Open ResumeNow</button>
+            <button pButton text type="button" [disabled]="busy()" (click)="loadDownloads()">Refresh downloads</button>
           </div>
           @for (d of downloads(); track d.path) {
             <div class="row wrap">
               <span class="grow small">{{ d.name }}</span>
               <input class="kw" placeholder="Keywords, comma separated" [(ngModel)]="downloadKeywords[d.path]" [name]="'kw-' + d.name" />
-              <button mat-stroked-button type="button" [disabled]="busy()" (click)="importDownload(d.path)">Import</button>
+              <button pButton outlined type="button" [disabled]="busy()" (click)="importDownload(d.path)">Import</button>
             </div>
           }
           @for (r of library(); track r.path) { <span class="small"><b>{{ r.label }}</b> · {{ r.keywords.join(', ') || 'no keywords' }}</span> }
@@ -61,30 +62,30 @@ import { NotifyService } from '../../shared/notify.service';
         <div class="grid-2">
           <section class="card">
             <div class="card-title between">
-              <span class="row gap-sm"><mat-icon class="material-symbols-rounded">tune</mat-icon>Execution mode & AI</span>
-              <button mat-icon-button type="button" matTooltip="How to configure an LLM provider" (click)="llmHelp.set(!llmHelp())" aria-label="LLM setup help">
-                <mat-icon class="material-symbols-rounded">help</mat-icon>
+              <span class="row gap-sm"><span class="material-symbols-rounded">tune</span>Execution mode & AI</span>
+              <button pButton text rounded severity="secondary" data-icon type="button" pTooltip="How to configure an LLM provider" (click)="llmHelp.set(!llmHelp())" aria-label="LLM setup help">
+                <span class="material-symbols-rounded">help</span>
               </button>
             </div>
             <form class="stack" (ngSubmit)="save()">
-              <mat-radio-group class="modes" name="mode" [(ngModel)]="form.mode">
+              <div class="modes" role="radiogroup" aria-label="Execution mode">
                 <label class="mode" [class.selected]="form.mode === 'DEMO'">
-                  <mat-radio-button value="DEMO" />
+                  <p-radiobutton name="mode" value="DEMO" [(ngModel)]="form.mode" />
                   <div><div class="row"><b>Demo</b><app-status-chip status="DEMO" /></div><span class="muted small">Nothing external, no files written. Safe for exploring.</span></div>
                 </label>
                 <label class="mode" [class.selected]="form.mode === 'DRY_RUN'">
-                  <mat-radio-button value="DRY_RUN" />
+                  <p-radiobutton name="mode" value="DRY_RUN" [(ngModel)]="form.mode" />
                   <div><div class="row"><b>Dry run</b><app-status-chip status="DRY_RUN" /></div><span class="muted small">Full workflow with simulated external actions and receipts.</span></div>
                 </label>
                 <label class="mode" [class.selected]="form.mode === 'LIVE'">
-                  <mat-radio-button value="LIVE" />
+                  <p-radiobutton name="mode" value="LIVE" [(ngModel)]="form.mode" />
                   <div><div class="row"><b>Live</b><app-status-chip status="LIVE" /></div><span class="muted small">Real resume files and Gmail — only after you approve and execute each action.</span></div>
                 </label>
-              </mat-radio-group>
+              </div>
 
               @if (llmHelp()) {
                 <div class="alert info">
-                  <mat-icon class="material-symbols-rounded">lightbulb</mat-icon>
+                  <span class="material-symbols-rounded">lightbulb</span>
                   <div>
                     <b>LLM setup help</b>
                     <div class="muted small mt-xs">Use <b>Demo</b> for an offline deterministic experience. Use <b>OpenAI-compatible</b> for OpenAI, local gateways, or self-hosted endpoints that expose a <span class="mono">/v1/chat/completions</span> API.</div>
@@ -94,79 +95,71 @@ import { NotifyService } from '../../shared/notify.service';
                 </div>
               }
 
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>LLM provider</mat-label>
-                <mat-select name="llmProvider" [(ngModel)]="form.llmProvider" (selectionChange)="onProviderChange($event.value)">
-                  <mat-option value="Demo">Demo (offline, deterministic)</mat-option>
-                  <mat-option value="OpenAI">OpenAI-compatible API</mat-option>
-                  <mat-option value="Gemini">Google Gemini</mat-option>
-                </mat-select>
-              </mat-form-field>
+              <div class="field">
+                <label class="field-label" for="llm-provider">LLM provider</label>
+                <p-select inputId="llm-provider" name="llmProvider" [(ngModel)]="form.llmProvider" (onChange)="onProviderChange($event.value)" [options]="providerOptions" optionLabel="label" optionValue="value" appendTo="body" />
+              </div>
 
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>Provider name</mat-label>
-                <input matInput name="llmDisplayName" [(ngModel)]="form.llmDisplayName" placeholder="OpenAI, Azure OpenAI, Ollama gateway..." required />
-                <mat-hint>Friendly name shown in the header and activity views.</mat-hint>
-              </mat-form-field>
+              <div class="field">
+                <label class="field-label" for="f-llmDisplayName">Provider name</label>
+                <input id="f-llmDisplayName" pInputText name="llmDisplayName" [(ngModel)]="form.llmDisplayName" placeholder="OpenAI, Azure OpenAI, Ollama gateway..." required />
+                <small class="field-hint">Friendly name shown in the header and activity views.</small>
+              </div>
 
               @if (form.llmProvider === 'OpenAI' || form.llmProvider === 'Gemini') {
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>Base URL</mat-label>
-                  <input matInput name="llmBaseUrl" [(ngModel)]="form.llmBaseUrl" placeholder="https://api.openai.com/v1/" required />
-                  <mat-hint>{{ form.llmProvider === 'Gemini' ? 'Gemini OpenAI-compatible endpoint. Create a key at aistudio.google.com/apikey.' : 'Must point to an OpenAI-compatible API root.' }}</mat-hint>
-                </mat-form-field>
+                <div class="field">
+                  <label class="field-label" for="f-llmBaseUrl">Base URL</label>
+                  <input id="f-llmBaseUrl" pInputText name="llmBaseUrl" [(ngModel)]="form.llmBaseUrl" placeholder="https://api.openai.com/v1/" required />
+                  <small class="field-hint">{{ form.llmProvider === 'Gemini' ? 'Gemini OpenAI-compatible endpoint. Create a key at aistudio.google.com/apikey.' : 'Must point to an OpenAI-compatible API root.' }}</small>
+                </div>
 
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>API key</mat-label>
-                  <input matInput name="llmApiKey" [type]="showLlmApiKey() ? 'text' : 'password'" [(ngModel)]="form.llmApiKey" autocomplete="off" />
-                  <button mat-icon-button matSuffix type="button" (click)="showLlmApiKey.set(!showLlmApiKey())" [attr.aria-label]="showLlmApiKey() ? 'Hide API key' : 'Show API key'">
-                    <mat-icon class="material-symbols-rounded">{{ showLlmApiKey() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                <div class="field">
+                  <label class="field-label" for="f-llmApiKey">API key</label>
+                  <input id="f-llmApiKey" pInputText name="llmApiKey" [type]="showLlmApiKey() ? 'text' : 'password'" [(ngModel)]="form.llmApiKey" autocomplete="off" />
+                  <button pButton text rounded severity="secondary" data-icon class="field-suffix" type="button" (click)="showLlmApiKey.set(!showLlmApiKey())" [attr.aria-label]="showLlmApiKey() ? 'Hide API key' : 'Show API key'">
+                    <span class="material-symbols-rounded">{{ showLlmApiKey() ? 'visibility_off' : 'visibility' }}</span>
                   </button>
-                  <mat-hint>{{ s.llmConfigured ? 'Leave blank to keep the saved key, or enter a new one to replace it.' : 'Required for OpenAI-compatible providers.' }}</mat-hint>
-                </mat-form-field>
+                  <small class="field-hint">{{ s.llmConfigured ? 'Leave blank to keep the saved key, or enter a new one to replace it.' : 'Required for OpenAI-compatible providers.' }}</small>
+                </div>
 
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>Model</mat-label>
-                  <input matInput name="llmModel" [(ngModel)]="form.llmModel" placeholder="gpt-4o-mini" required />
-                  <mat-hint>{{ form.llmProvider === 'Gemini' ? 'Example: gemini-3.5-flash-lite, gemini-3.5-flash.' : 'Example: gpt-4o-mini, gpt-4.1-mini, llama3.1:8b, mistral-small.' }}</mat-hint>
-                </mat-form-field>
+                <div class="field">
+                  <label class="field-label" for="f-llmModel">Model</label>
+                  <input id="f-llmModel" pInputText name="llmModel" [(ngModel)]="form.llmModel" placeholder="gpt-4o-mini" required />
+                  <small class="field-hint">{{ form.llmProvider === 'Gemini' ? 'Example: gemini-3.5-flash-lite, gemini-3.5-flash.' : 'Example: gpt-4o-mini, gpt-4.1-mini, llama3.1:8b, mistral-small.' }}</small>
+                </div>
               } @else {
                 <div class="alert info compact">
-                  <mat-icon class="material-symbols-rounded">memory</mat-icon>
+                  <span class="material-symbols-rounded">memory</span>
                   <span>Demo provider is built in and does not need a base URL, API key, or model configuration.</span>
                 </div>
               }
 
               <div class="row between">
-                <span class="muted small mono" matTooltip="Data directory">{{ s.dataDirectory }}</span>
-                <button mat-flat-button color="primary" type="submit" [disabled]="busy()">Save settings</button>
+                <span class="muted small mono" pTooltip="Data directory">{{ s.dataDirectory }}</span>
+                <button pButton type="submit" [disabled]="busy()">Save settings</button>
               </div>
             </form>
           </section>
 
           <section class="card">
-            <div class="card-title"><mat-icon class="material-symbols-rounded">travel_explore</mat-icon>Job search preferences</div>
+            <div class="card-title"><span class="material-symbols-rounded">travel_explore</span>Job search preferences</div>
             <p class="muted small">Choose the European countries and profile signals used during job discovery. Resume facts drive the matching; your LinkedIn URL is stored for auto-fill and future enrichment.</p>
             <form class="stack" (ngSubmit)="saveJobSearchPreferences()">
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>Preferred countries</mat-label>
-                <mat-select name="preferredCountries" [(ngModel)]="jobSearchForm.preferredCountries" multiple>
-                  @for (country of countryOptions; track country) {
-                    <mat-option [value]="country">{{ country }}</mat-option>
-                  }
-                </mat-select>
-                <mat-hint>Select one or more target countries for job discovery.</mat-hint>
-              </mat-form-field>
+              <div class="field">
+                <label class="field-label" for="preferred-countries">Preferred countries</label>
+                <p-multiselect inputId="preferred-countries" name="preferredCountries" [(ngModel)]="jobSearchForm.preferredCountries" [options]="countryOptions" display="chip" placeholder="Choose countries" appendTo="body" />
+                <small class="field-hint">Select one or more target countries for job discovery.</small>
+              </div>
 
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>LinkedIn profile URL</mat-label>
-                <input matInput name="linkedInProfileUrl" [(ngModel)]="jobSearchForm.linkedInProfileUrl" placeholder="https://www.linkedin.com/in/..." />
-                <mat-hint>Manual URL takes priority; if your resume contains LinkedIn, this field is prefilled automatically.</mat-hint>
-              </mat-form-field>
+              <div class="field">
+                <label class="field-label" for="f-linkedInProfileUrl">LinkedIn profile URL</label>
+                <input id="f-linkedInProfileUrl" pInputText name="linkedInProfileUrl" [(ngModel)]="jobSearchForm.linkedInProfileUrl" placeholder="https://www.linkedin.com/in/..." />
+                <small class="field-hint">Manual URL takes priority; if your resume contains LinkedIn, this field is prefilled automatically.</small>
+              </div>
 
               @if (preferences(); as p) {
                 <div class="alert info compact">
-                  <mat-icon class="material-symbols-rounded">person_search</mat-icon>
+                  <span class="material-symbols-rounded">person_search</span>
                   <span>
                     Effective LinkedIn URL: <span class="mono">{{ p.effectiveLinkedInProfileUrl || 'not available yet' }}</span>
                     @if (p.resumeLinkedInProfileUrl) {
@@ -176,57 +169,52 @@ import { NotifyService } from '../../shared/notify.service';
                 </div>
               }
 
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>Preferred roles</mat-label>
-                <textarea matInput name="preferredRolesText" [(ngModel)]="jobSearchForm.preferredRolesText" rows="3" placeholder="Backend Engineer, Senior .NET Developer, Platform Engineer"></textarea>
-                <mat-hint>Separate multiple roles with commas or new lines.</mat-hint>
-              </mat-form-field>
+              <div class="field">
+                <label class="field-label" for="f-preferredRolesText">Preferred roles</label>
+                <textarea id="f-preferredRolesText" pTextarea name="preferredRolesText" [(ngModel)]="jobSearchForm.preferredRolesText" rows="3" placeholder="Backend Engineer, Senior .NET Developer, Platform Engineer"></textarea>
+                <small class="field-hint">Separate multiple roles with commas or new lines.</small>
+              </div>
 
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>Work mode</mat-label>
-                <mat-select name="workMode" [(ngModel)]="jobSearchForm.workMode">
-                  <mat-option value="">No preference</mat-option>
-                  @for (mode of workModeOptions; track mode) {
-                    <mat-option [value]="mode">{{ mode }}</mat-option>
-                  }
-                </mat-select>
-              </mat-form-field>
+              <div class="field">
+                <label class="field-label" for="work-mode">Work mode</label>
+                <p-select inputId="work-mode" name="workMode" [(ngModel)]="jobSearchForm.workMode" [options]="workModeSelectOptions" optionLabel="label" optionValue="value" appendTo="body" />
+              </div>
 
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>Salary expectation</mat-label>
-                <input matInput name="salaryExpectation" [(ngModel)]="jobSearchForm.salaryExpectation" placeholder="e.g. €85,000 or £75,000" />
-              </mat-form-field>
+              <div class="field">
+                <label class="field-label" for="f-salaryExpectation">Salary expectation</label>
+                <input id="f-salaryExpectation" pInputText name="salaryExpectation" [(ngModel)]="jobSearchForm.salaryExpectation" placeholder="e.g. €85,000 or £75,000" />
+              </div>
 
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>Work authorization</mat-label>
-                <textarea matInput name="workAuthorization" [(ngModel)]="jobSearchForm.workAuthorization" rows="2" placeholder="e.g. Requires visa sponsorship / Eligible to work across the EU"></textarea>
-              </mat-form-field>
+              <div class="field">
+                <label class="field-label" for="f-workAuthorization">Work authorization</label>
+                <textarea id="f-workAuthorization" pTextarea name="workAuthorization" [(ngModel)]="jobSearchForm.workAuthorization" rows="2" placeholder="e.g. Requires visa sponsorship / Eligible to work across the EU"></textarea>
+              </div>
 
               <div class="row between">
                 <span class="muted small">These values are saved locally in the app data directory.</span>
-                <button mat-flat-button color="primary" type="submit" [disabled]="busy()">Save job preferences</button>
+                <button pButton type="submit" [disabled]="busy()">Save job preferences</button>
               </div>
             </form>
           </section>
 
           <section class="card">
-            <div class="card-title"><mat-icon class="material-symbols-rounded">description</mat-icon>Master resume</div>
+            <div class="card-title"><span class="material-symbols-rounded">description</span>Master resume</div>
             <p class="muted small">Your base resume (.docx or .pdf). It is only ever opened read-only; tailored copies are generated per job as .docx and written only after you approve and execute.</p>
 
             <div class="resume-status mt" [class.ok]="s.masterResumeExists" [class.missing]="!s.masterResumeExists">
-              <mat-icon class="material-symbols-rounded">{{ s.masterResumeExists ? 'check_circle' : 'warning' }}</mat-icon>
+              <span class="material-symbols-rounded">{{ s.masterResumeExists ? 'check_circle' : 'warning' }}</span>
               <div>
                 <b>{{ s.masterResumeExists ? 'Resume on file' : 'No resume found' }}</b>
                 <span class="muted small mono">{{ s.masterResumePath || 'No path configured' }}</span>
               </div>
             </div>
             @if (s.masterResumeWarning) {
-              <div class="alert warn mt"><mat-icon class="material-symbols-rounded">warning</mat-icon><span>{{ s.masterResumeWarning }}</span></div>
+              <div class="alert warn mt"><span class="material-symbols-rounded">warning</span><span>{{ s.masterResumeWarning }}</span></div>
             }
 
             <div class="dropzone mt" [class.drag]="dragging()" (dragover)="onDragOver($event)" (dragleave)="dragging.set(false)" (drop)="onDrop($event)" (click)="resumeInput.click()">
               <input #resumeInput type="file" accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden (change)="onResumeFile($event)" />
-              <mat-icon class="material-symbols-rounded">upload_file</mat-icon>
+              <span class="material-symbols-rounded">upload_file</span>
               @if (resumeFile) {
                 <b>{{ resumeFile.name }}</b><span class="muted small">{{ (resumeFile.size / 1024) | number:'1.0-0' }} KB · click to choose a different file</span>
               } @else {
@@ -234,105 +222,102 @@ import { NotifyService } from '../../shared/notify.service';
               }
             </div>
             <div class="row end mt">
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>Use for country</mat-label>
-                <mat-select [(ngModel)]="resumeCountry">
-                  <mat-option value="">All countries (master)</mat-option>
-                  @for (c of resumeCountryOptions; track c.code) { <mat-option [value]="c.code">{{ c.name }}</mat-option> }
-                </mat-select>
-              </mat-form-field>
-              @if (resumeFile) { <button mat-button type="button" [disabled]="busy()" (click)="resumeFile = null">Clear</button> }
-              <button mat-flat-button color="primary" type="button" [disabled]="busy() || !resumeFile" (click)="uploadResume()"><mat-icon class="material-symbols-rounded">cloud_upload</mat-icon>Upload resume</button>
+              <div class="field">
+                <label class="field-label" for="resume-country">Use for country</label>
+                <p-select inputId="resume-country" [(ngModel)]="resumeCountry" [options]="resumeCountrySelectOptions" optionLabel="name" optionValue="code" appendTo="body" />
+              </div>
+              @if (resumeFile) { <button pButton text type="button" [disabled]="busy()" (click)="resumeFile = null">Clear</button> }
+              <button pButton type="button" [disabled]="busy() || !resumeFile" (click)="uploadResume()"><span class="material-symbols-rounded">cloud_upload</span>Upload resume</button>
             </div>
             @if (countryResumes(s).length) {
               <h4 class="mt">Country-specific resumes</h4>
               @for (entry of countryResumes(s); track entry[0]) {
                 <div class="row"><b>{{ entry[0] }}</b><span class="muted small">{{ entry[1] }}</span>
-                  <button mat-button type="button" [disabled]="busy()" (click)="removeCountryResume(entry[0])">Remove</button></div>
+                  <button pButton text type="button" [disabled]="busy()" (click)="removeCountryResume(entry[0])">Remove</button></div>
               }
             }
 
-            <mat-expansion-panel class="mt advanced">
-              <mat-expansion-panel-header><mat-panel-title>Use an existing file path instead</mat-panel-title></mat-expansion-panel-header>
+            <p-accordion class="mt advanced"><p-accordion-panel value="advanced">
+              <p-accordion-header><span class="panel-title">Use an existing file path instead</span></p-accordion-header><p-accordion-content>
               <form class="stack" (ngSubmit)="save()">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>Path to .docx or .pdf</mat-label>
-                  <input matInput name="resume" [(ngModel)]="form.masterResumePath" placeholder="D:\\Documents\\Arvind-Resume.docx" />
-                </mat-form-field>
-                <div class="row end"><button mat-stroked-button type="submit" [disabled]="busy()">Save path</button></div>
+                <div class="field">
+                  <label class="field-label" for="f-resume">Path to .docx or .pdf</label>
+                  <input id="f-resume" pInputText name="resume" [(ngModel)]="form.masterResumePath" placeholder="D:\\Documents\\Arvind-Resume.docx" />
+                </div>
+                <div class="row end"><button pButton outlined type="submit" [disabled]="busy()">Save path</button></div>
               </form>
-            </mat-expansion-panel>
+            </p-accordion-content></p-accordion-panel></p-accordion>
           </section>
 
           <div class="stack">
             <section class="card">
               <div class="card-title between">
-                <span class="row"><mat-icon class="material-symbols-rounded">mail</mat-icon>Google / Gmail</span>
-                <button mat-icon-button type="button" matTooltip="How Gmail integration works" (click)="googleHelp.set(!googleHelp())" aria-label="Gmail integration help">
-                  <mat-icon class="material-symbols-rounded">help</mat-icon>
+                <span class="row"><span class="material-symbols-rounded">mail</span>Google / Gmail</span>
+                <button pButton text rounded severity="secondary" data-icon type="button" pTooltip="How Gmail integration works" (click)="googleHelp.set(!googleHelp())" aria-label="Gmail integration help">
+                  <span class="material-symbols-rounded">help</span>
                 </button>
               </div>
               @if (googleHelp()) {
                 <div class="alert info help-card">
-                  <mat-icon class="material-symbols-rounded">help</mat-icon>
+                  <span class="material-symbols-rounded">help</span>
                   <span>
                     First save the Google OAuth Client ID, Client Secret, and Redirect URI. The application stores the client secret in protected local storage and keeps only non-secret Google settings in the local data directory. After that, click <b>Connect Google</b> to authorize Gmail access through Google.
                   </span>
                 </div>
               }
               <form class="stack mt" (ngSubmit)="saveGoogleOAuth()">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>Google Client ID</mat-label>
-                  <input matInput name="googleClientId" [(ngModel)]="googleForm.clientId" placeholder="YOUR_GOOGLE_OAUTH_CLIENT_ID" required />
-                </mat-form-field>
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>Google Client Secret</mat-label>
-                  <input matInput name="googleClientSecret" [type]="showGoogleSecret() ? 'text' : 'password'" [(ngModel)]="googleForm.clientSecret" placeholder="YOUR_GOOGLE_OAUTH_CLIENT_SECRET" />
-                  <button mat-icon-button matSuffix type="button" (click)="showGoogleSecret.set(!showGoogleSecret())" [attr.aria-label]="showGoogleSecret() ? 'Hide client secret' : 'Show client secret'">
-                    <mat-icon class="material-symbols-rounded">{{ showGoogleSecret() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                <div class="field">
+                  <label class="field-label" for="f-googleClientId">Google Client ID</label>
+                  <input id="f-googleClientId" pInputText name="googleClientId" [(ngModel)]="googleForm.clientId" placeholder="YOUR_GOOGLE_OAUTH_CLIENT_ID" required />
+                </div>
+                <div class="field">
+                  <label class="field-label" for="f-googleClientSecret">Google Client Secret</label>
+                  <input id="f-googleClientSecret" pInputText name="googleClientSecret" [type]="showGoogleSecret() ? 'text' : 'password'" [(ngModel)]="googleForm.clientSecret" placeholder="YOUR_GOOGLE_OAUTH_CLIENT_SECRET" />
+                  <button pButton text rounded severity="secondary" data-icon class="field-suffix" type="button" (click)="showGoogleSecret.set(!showGoogleSecret())" [attr.aria-label]="showGoogleSecret() ? 'Hide client secret' : 'Show client secret'">
+                    <span class="material-symbols-rounded">{{ showGoogleSecret() ? 'visibility_off' : 'visibility' }}</span>
                   </button>
-                  <mat-hint>{{ googleForm.clientSecretConfigured ? 'Leave blank to keep the saved client secret, or enter a new one to replace it.' : 'Required the first time you configure Google OAuth.' }}</mat-hint>
-                </mat-form-field>
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>Redirect URI</mat-label>
-                  <input matInput name="googleRedirectUri" [(ngModel)]="googleForm.redirectUri" placeholder="http://localhost:5228/api/integrations/google/callback" required />
-                </mat-form-field>
+                  <small class="field-hint">{{ googleForm.clientSecretConfigured ? 'Leave blank to keep the saved client secret, or enter a new one to replace it.' : 'Required the first time you configure Google OAuth.' }}</small>
+                </div>
+                <div class="field">
+                  <label class="field-label" for="f-googleRedirectUri">Redirect URI</label>
+                  <input id="f-googleRedirectUri" pInputText name="googleRedirectUri" [(ngModel)]="googleForm.redirectUri" placeholder="http://localhost:5228/api/integrations/google/callback" required />
+                </div>
                 <div class="row between">
                   <span class="muted small">Client secrets are stored in protected local storage and are never sent back to the browser after saving.</span>
-                  <button mat-flat-button color="primary" type="submit" [disabled]="busy()">Save Google settings</button>
+                  <button pButton type="submit" [disabled]="busy()">Save Google settings</button>
                 </div>
               </form>
               @if (google(); as g) {
                 @if (!g.configured) {
-                  <div class="alert warn mt"><mat-icon class="material-symbols-rounded">info</mat-icon><span>Gmail actions are unavailable until valid Google OAuth settings are saved.</span></div>
+                  <div class="alert warn mt"><span class="material-symbols-rounded">info</span><span>Gmail actions are unavailable until valid Google OAuth settings are saved.</span></div>
                 }
                 @if (g.connected) {
                   <div class="row between mt">
-                    <div class="row"><mat-icon class="material-symbols-rounded ok">check_circle</mat-icon><span>Connected as <b>{{ g.accountEmail || 'Google Account' }}</b></span></div>
-                    <button mat-stroked-button [disabled]="busy()" (click)="revoke()">Disconnect Google</button>
+                    <div class="row"><span class="material-symbols-rounded ok">check_circle</span><span>Connected as <b>{{ g.accountEmail || 'Google Account' }}</b></span></div>
+                    <button pButton outlined [disabled]="busy()" (click)="revoke()">Disconnect Google</button>
                   </div>
                 } @else {
                   <p class="muted small mt">After saving the OAuth settings, click below to connect your Google account and enable Gmail features.</p>
-                  <div class="row end mt"><button mat-flat-button color="primary" [disabled]="busy() || !googleConfigured()" (click)="connect()"><mat-icon class="material-symbols-rounded">link</mat-icon>Connect Google</button></div>
+                  <div class="row end mt"><button pButton [disabled]="busy() || !googleConfigured()" (click)="connect()"><span class="material-symbols-rounded">link</span>Connect Google</button></div>
                 }
               }
             </section>
 
             <section class="card">
-              <div class="card-title"><mat-icon class="material-symbols-rounded">backup</mat-icon>Backup &amp; restore</div>
+              <div class="card-title"><span class="material-symbols-rounded">backup</span>Backup &amp; restore</div>
               <p class="muted small">Exports jobs, applications, approvals, resumes, emails, receipts, audit log, profile and settings as a .zip. Secrets (login hash, Google tokens, encryption keys) are never exported.</p>
               <div class="row mt">
-                <button mat-stroked-button [disabled]="busy()" (click)="exportData()"><mat-icon class="material-symbols-rounded">download</mat-icon>Download export</button>
+                <button pButton outlined [disabled]="busy()" (click)="exportData()"><span class="material-symbols-rounded">download</span>Download export</button>
               </div>
               <div class="restore mt">
                 <input #file type="file" accept=".zip,application/zip" hidden (change)="onFile($event)" />
-                <button mat-button (click)="file.click()"><mat-icon class="material-symbols-rounded">upload_file</mat-icon>{{ importFile ? importFile.name : 'Choose export file…' }}</button>
-                <button mat-flat-button color="warn" [disabled]="busy() || !importFile" (click)="importData()">Import &amp; replace</button>
+                <button pButton text (click)="file.click()"><span class="material-symbols-rounded">upload_file</span>{{ importFile ? importFile.name : 'Choose export file…' }}</button>
+                <button pButton severity="danger" [disabled]="busy() || !importFile" (click)="importData()">Import &amp; replace</button>
               </div>
             </section>
           </div>
         </div>
-      } @else if (!error()) { <mat-progress-bar mode="indeterminate" /> }
+      } @else if (!error()) { <app-loading-skeleton variant="form" [rows]="5" label="Loading settings" /> }
     </div>
   `,
   styles: [`
@@ -356,7 +341,7 @@ import { NotifyService } from '../../shared/notify.service';
     .resume-status .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dropzone { display: grid; justify-items: center; gap: .3rem; padding: 1.75rem 1rem; border: 2px dashed var(--ajh-border); border-radius: 12px; cursor: pointer; text-align: center; transition: border-color .15s, background .15s; }
     .dropzone:hover, .dropzone.drag { border-color: var(--ajh-primary); background: var(--ajh-primary-soft); }
-    .dropzone mat-icon { font-size: 2rem; width: 2rem; height: 2rem; color: var(--ajh-primary); }
+    .dropzone .material-symbols-rounded { font-size: 2rem; width: 2rem; height: 2rem; color: var(--ajh-primary); }
     .advanced { box-shadow: none; border: 1px solid var(--ajh-border); border-radius: 10px !important; }
     .kw { padding: .4rem .6rem; border: 1px solid var(--ajh-border); border-radius: 8px; min-width: 14rem; background: transparent; color: inherit; }
   `]
@@ -380,6 +365,12 @@ export class SettingsComponent {
     'Czech Republic', 'Hungary', 'Romania', 'Other European Countries', 'Singapore', 'United Arab Emirates'
   ];
   readonly workModeOptions = ['Remote', 'Hybrid', 'Onsite', 'Flexible'];
+  readonly workModeSelectOptions = [{ label: 'No preference', value: '' }, ...this.workModeOptions.map(m => ({ label: m, value: m }))];
+  readonly providerOptions = [
+    { label: 'Demo (offline, deterministic)', value: 'Demo' },
+    { label: 'OpenAI-compatible API', value: 'OpenAI' },
+    { label: 'Google Gemini', value: 'Gemini' }
+  ];
   form = { mode: 'DEMO', llmProvider: 'Demo', llmDisplayName: 'Demo', llmBaseUrl: 'https://api.openai.com/v1/', llmApiKey: '', llmModel: 'gpt-4o-mini', masterResumePath: '' };
   jobSearchForm = { preferredCountries: [] as string[], linkedInProfileUrl: '', preferredRolesText: '', workMode: '', salaryExpectation: '', workAuthorization: '' };
   googleForm = { clientId: '', clientSecret: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback', clientSecretConfigured: false, configured: false };
@@ -464,7 +455,7 @@ export class SettingsComponent {
 
   saveJobSearchPreferences() {
     const preferredRoles = this.jobSearchForm.preferredRolesText
-      .split(/[\n,]/)
+      .split(/[\n]/)
       .map(value => value.trim())
       .filter(Boolean);
     return this.run(async () => {
@@ -508,6 +499,7 @@ export class SettingsComponent {
     { code: 'US', name: 'United States' }, { code: 'CA', name: 'Canada' }, { code: 'GB', name: 'United Kingdom' }, { code: 'IE', name: 'Ireland' },
     { code: 'DE', name: 'Germany' },
     { code: 'AE', name: 'United Arab Emirates' }, { code: 'SG', name: 'Singapore' }, { code: 'IN', name: 'India' }];
+  readonly resumeCountrySelectOptions = [{ code: '', name: 'All countries (master)' }, ...this.resumeCountryOptions];
   countryResumes(s: Settings) { return Object.entries(s.countryResumePaths ?? {}); }
   removeCountryResume(country: string) {
     return this.run(async () => {

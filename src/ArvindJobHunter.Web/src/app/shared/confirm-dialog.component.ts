@@ -1,10 +1,10 @@
 import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
-import { MatButtonModule } from '@angular/material/button';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
-import { MatIconModule } from '@angular/material/icon';
+import { DynamicDialogConfig, DynamicDialogRef } from 'primeng/dynamicdialog';
+import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
+import { FloatLabelModule } from 'primeng/floatlabel';
+import { AutoFocusModule } from 'primeng/autofocus';
 
 export interface ConfirmDialogData {
   title: string;
@@ -19,30 +19,30 @@ export interface ConfirmDialogData {
 @Component({
   selector: 'app-confirm-dialog',
   standalone: true,
-  imports: [FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatIconModule],
+  imports: [FormsModule, ButtonModule, InputTextModule, FloatLabelModule, AutoFocusModule],
   template: `
-    <h2 mat-dialog-title class="row">
-      <mat-icon class="material-symbols-rounded" [class.danger]="data.danger">{{ data.danger ? 'warning' : 'help' }}</mat-icon>
+    <h2 class="dialog-title row">
+      <span class="material-symbols-rounded" [class.danger]="data.danger">{{ data.danger ? 'warning' : 'help' }}</span>
       {{ data.title }}
     </h2>
-    <mat-dialog-content>
+    <div class="dialog-content">
       <p class="pre">{{ data.message }}</p>
       @if (data.promptLabel) {
-        <mat-form-field appearance="outline" class="mt">
-          <mat-label>{{ data.promptLabel }}</mat-label>
-          <input matInput [(ngModel)]="value" cdkFocusInitial />
-        </mat-form-field>
+        <p-floatlabel variant="on" class="mt full">
+          <input pInputText id="confirm-prompt" class="full" [(ngModel)]="value" [pAutoFocus]="true" />
+          <label for="confirm-prompt">{{ data.promptLabel }}</label>
+        </p-floatlabel>
       }
-    </mat-dialog-content>
-    <mat-dialog-actions align="end">
-      <button mat-button (click)="ref.close(undefined)">{{ data.cancelLabel ?? 'Cancel' }}</button>
-      <button mat-flat-button [color]="data.danger ? 'warn' : 'primary'" (click)="ref.close(data.promptLabel ? value : true)">{{ data.confirmLabel ?? 'Confirm' }}</button>
-    </mat-dialog-actions>
+    </div>
+    <div class="dialog-actions">
+      <p-button [text]="true" [label]="data.cancelLabel ?? 'Cancel'" (onClick)="ref.close(undefined)" />
+      <p-button [severity]="data.danger ? 'danger' : 'primary'" [label]="data.confirmLabel ?? 'Confirm'" (onClick)="ref.close(data.promptLabel ? value : true)" />
+    </div>
   `,
-  styles: [`mat-icon.danger { color: var(--ajh-danger); } h2 { gap: .5rem; }`]
+  styles: [`.danger { color: var(--ajh-danger); } h2 { gap: .5rem; }`]
 })
 export class ConfirmDialogComponent {
-  readonly data = inject<ConfirmDialogData>(MAT_DIALOG_DATA);
-  readonly ref = inject(MatDialogRef<ConfirmDialogComponent>);
+  readonly data = inject<DynamicDialogConfig<ConfirmDialogData>>(DynamicDialogConfig).data!;
+  readonly ref = inject(DynamicDialogRef);
   value = '';
 }

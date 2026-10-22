@@ -1,44 +1,42 @@
 import { Component, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { MatIconModule } from '@angular/material/icon';
-import { MatInputModule } from '@angular/material/input';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatButtonModule } from '@angular/material/button';
 import { PageHeaderComponent } from '../../shared/page-header.component';
 import { HELP_ARTICLES, HELP_CATEGORIES } from './help-content';
 import { HelpArticle, HelpCategory, HelpChatMessage } from './help.models';
 import { queryHelpArticles } from './help.utils';
+import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
 
 @Component({
   selector: 'app-help',
   standalone: true,
-  imports: [FormsModule, MatIconModule, MatInputModule, MatFormFieldModule, MatButtonModule, PageHeaderComponent],
+  imports: [ButtonModule, InputTextModule, FormsModule, PageHeaderComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Support" title="Help Center" icon="help" subtitle="Browse formal product documentation or ask questions against the documented guidance." />
 
       <section class="card stack">
         <div class="row gap-sm wrap">
-          <button mat-flat-button [color]="view() === 'docs' ? 'primary' : undefined" type="button" (click)="view.set('docs')">
-            <mat-icon class="material-symbols-rounded">menu_book</mat-icon>Docs center
+          <button pButton [severity]="view() === 'docs' ? 'primary' : 'secondary'" type="button" (click)="view.set('docs')">
+            <span class="material-symbols-rounded">menu_book</span>Docs center
           </button>
-          <button mat-flat-button [color]="view() === 'chat' ? 'primary' : undefined" type="button" (click)="view.set('chat')">
-            <mat-icon class="material-symbols-rounded">chat</mat-icon>Docs chat
+          <button pButton [severity]="view() === 'chat' ? 'primary' : 'secondary'" type="button" (click)="view.set('chat')">
+            <span class="material-symbols-rounded">chat</span>Docs chat
           </button>
         </div>
       </section>
 
       @if (view() === 'docs') {
         <section class="card stack mt">
-          <div class="card-title"><mat-icon class="material-symbols-rounded">library_books</mat-icon>Documentation Center</div>
-          <mat-form-field appearance="outline" subscriptSizing="dynamic">
-            <mat-label>Search documents</mat-label>
-            <input matInput [(ngModel)]="query" placeholder="Search by topic, keyword, or problem" />
-          </mat-form-field>
+          <div class="card-title"><span class="material-symbols-rounded">library_books</span>Documentation Center</div>
+          <div class="field">
+            <label class="field-label" for="f-query">Search documents</label>
+            <input id="f-query" pInputText [(ngModel)]="query" placeholder="Search by topic, keyword, or problem" />
+          </div>
           <div class="row gap-sm wrap">
-            <button mat-stroked-button type="button" [color]="selectedCategory() === 'All' ? 'primary' : undefined" (click)="selectedCategory.set('All')">All</button>
+            <button pButton outlined type="button" [severity]="selectedCategory() === 'All' ? 'primary' : 'secondary'" (click)="selectedCategory.set('All')">All</button>
             @for (category of categories; track category.key) {
-              <button mat-stroked-button type="button" [color]="selectedCategory() === category.key ? 'primary' : undefined" (click)="selectedCategory.set(category.key)">{{ category.title }}</button>
+              <button pButton outlined type="button" [severity]="selectedCategory() === category.key ? 'primary' : 'secondary'" (click)="selectedCategory.set(category.key)">{{ category.title }}</button>
             }
           </div>
 
@@ -49,8 +47,8 @@ import { queryHelpArticles } from './help.utils';
                   <div class="eyebrow">{{ article.category }}</div>
                   <h2>{{ article.title }}</h2>
                 </div>
-                <button mat-stroked-button type="button" (click)="selectedArticle.set(null)">
-                  <mat-icon class="material-symbols-rounded">arrow_back</mat-icon>Back to results
+                <button pButton outlined type="button" (click)="selectedArticle.set(null)">
+                  <span class="material-symbols-rounded">arrow_back</span>Back to results
                 </button>
               </div>
               <p class="muted">{{ article.summary }}</p>
@@ -68,7 +66,7 @@ import { queryHelpArticles } from './help.utils';
                   <b>Related topics</b>
                   <div class="row gap-sm wrap">
                     @for (related of relatedArticles(); track related.id) {
-                      <button mat-stroked-button type="button" (click)="openArticle(related)">{{ related.title }}</button>
+                      <button pButton outlined type="button" (click)="openArticle(related)">{{ related.title }}</button>
                     }
                   </div>
                 </div>
@@ -97,7 +95,7 @@ import { queryHelpArticles } from './help.utils';
                     </article>
                   } @empty {
                     <div class="empty small">
-                      <mat-icon class="material-symbols-rounded">filter_alt_off</mat-icon>
+                      <span class="material-symbols-rounded">filter_alt_off</span>
                       No documents match the current search and category filter.
                     </div>
                   }
@@ -108,21 +106,21 @@ import { queryHelpArticles } from './help.utils';
         </section>
       } @else {
         <section class="card stack mt">
-          <div class="card-title"><mat-icon class="material-symbols-rounded">question_answer</mat-icon>Ask the docs</div>
-          <mat-form-field appearance="outline" subscriptSizing="dynamic">
-            <mat-label>Your question</mat-label>
-            <input matInput [(ngModel)]="chatInput" placeholder="Example: Why do I get redirect_uri_mismatch?" (keyup.enter)="askDocs()" />
-          </mat-form-field>
+          <div class="card-title"><span class="material-symbols-rounded">question_answer</span>Ask the docs</div>
+          <div class="field">
+            <label class="field-label" for="f-chatInput">Your question</label>
+            <input id="f-chatInput" pInputText [(ngModel)]="chatInput" placeholder="Example: Why do I get redirect_uri_mismatch?" (keyup.enter)="askDocs()" />
+          </div>
           <div class="row gap-sm wrap">
             @for (suggestion of suggestions; track suggestion) {
-              <button mat-stroked-button type="button" (click)="useSuggestion(suggestion)">{{ suggestion }}</button>
+              <button pButton outlined type="button" (click)="useSuggestion(suggestion)">{{ suggestion }}</button>
             }
-            <button mat-flat-button color="primary" type="button" (click)="askDocs()" [disabled]="!chatInput().trim()">Ask</button>
+            <button pButton type="button" (click)="askDocs()" [disabled]="!chatInput().trim()">Ask</button>
           </div>
         </section>
 
         <section class="card stack mt">
-          <div class="card-title"><mat-icon class="material-symbols-rounded">forum</mat-icon>Conversation</div>
+          <div class="card-title"><span class="material-symbols-rounded">forum</span>Conversation</div>
           @for (message of conversation(); track message.id) {
             <article class="message" [class.user]="message.role === 'user'" [class.assistant]="message.role === 'assistant'">
               <div class="message-meta">{{ message.role === 'user' ? 'You' : 'Docs assistant' }}</div>
@@ -140,14 +138,14 @@ import { queryHelpArticles } from './help.utils';
               @if (message.matchedArticleIds?.length) {
                 <div class="row gap-sm wrap">
                   @for (article of matchedArticles(message.matchedArticleIds!); track article.id) {
-                    <button mat-stroked-button type="button" (click)="showFromChat(article)">{{ article.title }}</button>
+                    <button pButton outlined type="button" (click)="showFromChat(article)">{{ article.title }}</button>
                   }
                 </div>
               }
             </article>
           } @empty {
             <div class="empty">
-              <mat-icon class="material-symbols-rounded">chat</mat-icon>
+              <span class="material-symbols-rounded">chat</span>
               Ask a question and the Help Center will answer using the structured project documentation.
             </div>
           }
@@ -175,7 +173,7 @@ import { queryHelpArticles } from './help.utils';
     .eyebrow { font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ajh-primary); }
     .refs ul { margin: .35rem 0 0; padding-left: 1.1rem; color: var(--ajh-muted); }
     .empty { display: flex; gap: .75rem; align-items: flex-start; color: var(--ajh-muted); }
-    .empty mat-icon { color: var(--ajh-primary); }
+    .empty .material-symbols-rounded { color: var(--ajh-primary); }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .small { font-size: .9rem; }
   `]
