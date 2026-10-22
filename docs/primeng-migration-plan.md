@@ -3,8 +3,8 @@
 Branch: `Arvind/primeng-full-migration`
 Goal: replace Angular Material in `src/ArvindJobHunter.Web` with PrimeNG and keep the current look and behavior.
 
-Work in small chunks. After each chunk, run **one** build with
-`npx ng build --configuration development` (much faster than the default production build).
+Work in small chunks. Run one build per chunk with `npx ng build` (about 1 minute).
+There is no `development` build configuration in `angular.json`.
 
 ## Done
 
@@ -15,30 +15,25 @@ Work in small chunks. After each chunk, run **one** build with
 | 3 | Auth pages and `_primeng-layout.scss` | 5d3fc2e |
 | 4 | Basic feature markup (inputs, buttons, cards, icons, progress) | 0b68ff3 |
 | 5 | Accordions, tabs, badges, activity table | 7d1f050 |
-| 6 | Selects: applications, interview-prep, profile, settings (incl. multiselect) | uncommitted, build passed |
-| 7 | Settings radio group to `p-radiobutton` | uncommitted, not built yet |
-| 8 | Jobs/profile button toggles to `p-selectbutton` | uncommitted, not built yet |
-| 9 | Jobs `mat-paginator` to `p-paginator`; removed unused MatMenuModule | uncommitted, not built yet |
+| 6 | Selects: applications, interview-prep, profile, settings (incl. multiselect) | 82cf6ff |
+| 7 | Settings radio group to `p-radiobutton` | 82cf6ff |
+| 8 | Jobs/profile button toggles to `p-selectbutton` | 82cf6ff |
+| 9 | Jobs paginator to `p-paginator`; removed unused MatMenuModule | 82cf6ff |
+| 10 | Build verified (initial bundle 787.68 kB, no errors) | 82cf6ff |
+| 11 | Re-scan: no `@angular/material` or `mat-*` left in `src` | 82cf6ff |
+| 12 | Material theme and `.mat-*` selectors removed from `styles.scss`; `primeng-layout` import restored | 82cf6ff |
+| 13 | `@angular/material` removed from `package.json` (`@angular/cdk` kept for `BreakpointObserver`) | 82cf6ff |
+| 14 | Frontend tests: 7 files, 28 tests passed | 82cf6ff |
 
-## Build is hanging (current blocker)
+## Notes
 
-Earlier builds took about 30-60 s. The last few runs were canceled partway through, which probably left
-`node`/`ng` processes running. These hold file locks and the `.angular/cache`, so new builds hang with no output.
-To fix it, run this in your own terminal:
-
-```powershell
-Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
-cd D:\Job-Hunt-\src\ArvindJobHunter.Web
-npx ng build --configuration development
-```
-
-If it still hangs, delete `src/ArvindJobHunter.Web/.angular/cache` and build again.
+- Builds hung earlier because canceled runs left `node` processes running. If a build hangs, run
+  `Get-Process node | Stop-Process -Force` and build again.
+- Visual Studio's editor sometimes collapsed the `imports: [...]` line of a component during edits.
+  If you see `TS2353 ... does not exist in type 'Component'`, check the component's `imports` array.
 
 ## Remaining
 
-- [ ] 10. Build to verify chunks 7-9, then commit them
-- [ ] 11. Re-scan `src/app` for any remaining `@angular/material` imports or `mat-*` tags
-- [ ] 12. Remove the Material theme and legacy `.mat-*` selectors from `styles.scss`, then build
-- [ ] 13. Remove `@angular/material` (and `@angular/cdk` if unused; note `BreakpointObserver` in shell uses CDK) from `package.json`, then build
-- [ ] 14. Run frontend tests (`npx ng test --watch=false`)
-- [ ] 15. Do a visual/runtime check of each page, then make the final commit
+- [ ] 15. Visual/runtime check of each page (`npm start`): login, shell nav, jobs filter and paginator,
+  profile filter, settings mode radios and selects, applications status select, dialogs and toasts
+- [ ] 16. Optional: push the branch and open a PR
