@@ -99,68 +99,62 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
 
       <section class="card">
         <div class="row between toolbar">
-          <div class="field">
-            <span class="material-symbols-rounded field-prefix">search</span>
-            <input pInputText placeholder="Search title or company" [ngModel]="query()" (ngModelChange)="query.set($event); pageIndex.set(0)" />
+          <div class="search-box">
+            <span class="material-symbols-rounded">search</span>
+            <input pInputText aria-label="Search jobs" placeholder="Search title or company" [ngModel]="query()" (ngModelChange)="query.set($event); pageIndex.set(0)" />
           </div>
-          <p-selectbutton [options]="filterOptions()" [ngModel]="filter()" (ngModelChange)="filter.set($event); pageIndex.set(0)" optionLabel="label" optionValue="value" [allowEmpty]="false" aria-label="Filter jobs" />
+          <div class="row">
+            <span class="muted small">{{ visible().length }} result{{ visible().length === 1 ? '' : 's' }}</span>
+            <p-selectbutton [options]="filterOptions()" [ngModel]="filter()" (ngModelChange)="filter.set($event); pageIndex.set(0)" optionLabel="label" optionValue="value" [allowEmpty]="false" aria-label="Filter jobs" />
+          </div>
         </div>
 
-		<div class="table-wrap">
-		  <table class="jobs-table">
-			<thead>
-			  <tr>
-				<th>Role</th>
-				<th>Company</th>
-				<th>Location</th>
-				<th>Source</th>
-				<th>Status</th>
-				<th class="num">Match</th>
-				<th>Added</th>
-				<th class="actions">Actions</th>
-			  </tr>
-			</thead>
-			<tbody>
-			  @for (j of paged(); track j.id) {
-				<tr>
-				  <td>
-					<a class="title" [routerLink]="['/jobs', j.id]">{{ j.title }}</a>
-					@if (j.match; as m) {
-					  <div class="chips mt-sm">
-						@for (s of m.matchedSkills.slice(0, 4); track s) { <span class="chip success">{{ s }}</span> }
-						@for (s of m.missingSkills.slice(0, 2); track s) { <span class="chip danger">{{ s }}</span> }
-					  </div>
-					}
-				  </td>
-				  <td>{{ j.company }}</td>
-				  <td>{{ j.location || '—' }}</td>
-				  <td>@if (j.url) { <a [href]="j.url" target="_blank" rel="noopener noreferrer">{{ j.source }}</a> } @else { {{ j.source }} }</td>
-				  <td><app-status-chip [status]="j.status" /></td>
-				  <td class="num">@if (j.match; as m) { <span class="score" [class.low]="m.score < 60">{{ m.score }}%</span> } @else { <span class="muted small">—</span> }</td>
-				  <td class="nowrap">{{ j.createdAt | date:'mediumDate' }}</td>
-				  <td class="actions">
-					<div class="row nowrap">
-					  @if (j.status !== 'DISMISSED') {
-						<button pButton [disabled]="busy()" (click)="apply(j)">Apply</button>
-						<button pButton outlined [disabled]="busy()" (click)="analyze(j)">{{ j.analysis ? 'Re-analyze' : 'Analyze' }}</button>
-						<button pButton text rounded severity="secondary" data-icon pTooltip="Dismiss" [disabled]="busy()" (click)="dismiss(j)"><span class="material-symbols-rounded">visibility_off</span></button>
-					  }
-					  <a pButton text rounded severity="secondary" data-icon pTooltip="Open" [routerLink]="['/jobs', j.id]"><span class="material-symbols-rounded">arrow_forward</span></a>
-					</div>
-				  </td>
-				</tr>
-			  } @empty {
-				@if (!loaded()) {
-				  <tr><td colspan="8"><app-loading-skeleton variant="table" [rows]="6" [columns]="6" label="Loading jobs" /></td></tr>
-				} @else {
-				<tr><td colspan="8"><div class="empty"><span class="material-symbols-rounded">work_off</span>{{ jobs().length ? 'No jobs match this filter.' : 'No jobs yet — discover sponsored roles or add one manually.' }}</div></td></tr>
+		<div class="list">
+		  @for (j of paged(); track j.id) {
+			<article class="list-card job" [class.dismissed]="j.status === 'DISMISSED'">
+			  <div class="ring" [class.mid]="(j.match?.score ?? 0) >= 40 && (j.match?.score ?? 0) < 70" [class.low]="j.match && j.match.score < 40" [class.none]="!j.match" [style.--value]="j.match?.score ?? 0" [pTooltip]="j.match ? 'Resume match' : 'Not analyzed yet'">
+				<span>{{ j.match ? j.match.score + '%' : '—' }}</span>
+			  </div>
+			  <div class="body">
+				<div class="head">
+				  <a class="title ellipsis" [routerLink]="['/jobs', j.id]" [title]="j.title">{{ j.title }}</a>
+				  <app-status-chip [status]="j.status" />
+				</div>
+				<div class="meta">
+				  <span><span class="material-symbols-rounded">apartment</span>{{ j.company }}</span>
+				  @if (j.location) {
+					<span [pTooltip]="locations(j.location).length > 1 ? j.location : ''"><span class="material-symbols-rounded">location_on</span>{{ locations(j.location)[0] }}@if (locations(j.location).length > 1) { <span class="chip more">+{{ locations(j.location).length - 1 }}</span> }</span>
+				  }
+				  <span><span class="material-symbols-rounded">public</span>@if (j.url) { <a [href]="j.url" target="_blank" rel="noopener noreferrer">{{ j.source }}</a> } @else { {{ j.source }} }</span>
+				  <span><span class="material-symbols-rounded">calendar_today</span>{{ j.createdAt | date:'mediumDate' }}</span>
+				</div>
+				@if (j.match; as m) {
+				  <div class="chips">
+					@for (s of m.matchedSkills.slice(0, 4); track s) { <span class="chip success"><span class="material-symbols-rounded">check</span>{{ s }}</span> }
+					@for (s of m.missingSkills.slice(0, 2); track s) { <span class="chip danger" pTooltip="Missing from your resume">{{ s }}</span> }
+					@if (m.matchedSkills.length + m.missingSkills.length > 6) { <span class="chip more">+{{ m.matchedSkills.length + m.missingSkills.length - 6 }} more</span> }
+				  </div>
 				}
-			  }
-			</tbody>
-		  </table>
+			  </div>
+			  <div class="job-actions">
+				@if (j.status !== 'DISMISSED') {
+				  <button pButton size="small" [disabled]="busy()" (click)="apply(j)"><span class="material-symbols-rounded">send</span>Apply</button>
+				  <button pButton size="small" outlined [disabled]="busy()" (click)="analyze(j)"><span class="material-symbols-rounded">auto_awesome</span>{{ j.analysis ? 'Re-analyze' : 'Analyze' }}</button>
+				  <button pButton text rounded severity="secondary" data-icon pTooltip="Dismiss" aria-label="Dismiss" [disabled]="busy()" (click)="dismiss(j)"><span class="material-symbols-rounded">visibility_off</span></button>
+				}
+				<a pButton text rounded severity="secondary" data-icon pTooltip="Open details" aria-label="Open details" [routerLink]="['/jobs', j.id]"><span class="material-symbols-rounded">chevron_right</span></a>
+			  </div>
+			</article>
+		  } @empty {
+			@if (!loaded()) {
+			  <app-loading-skeleton variant="table" [rows]="6" [columns]="6" label="Loading jobs" />
+			} @else {
+			  <div class="empty"><span class="material-symbols-rounded">work_off</span>{{ jobs().length ? 'No jobs match this filter.' : 'No jobs yet — discover sponsored roles or add one manually.' }}</div>
+			}
+		  }
 		</div>
 		<p-paginator [totalRecords]="visible().length" [first]="pageIndex() * pageSize()" [rows]="pageSize()" [rowsPerPageOptions]="[10, 25, 50, 100]" (onPageChange)="onPage($event)" [showFirstLastIcon]="true" />
-      </section>
+	  </section>
     </div>
   `,
   styles: [`
@@ -168,19 +162,21 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
     .import { align-items: center; margin-bottom: 1rem; }
     .form { display: grid; gap: .5rem 1rem; grid-template-columns: 1fr 1fr; }
     .form .span { grid-column: 1 / -1; }
-    .toolbar { margin-bottom: .5rem; }
-    .search { width: min(100%, 360px); }
-    .table-wrap { overflow-x: auto; }
-    .jobs-table { width: 100%; border-collapse: collapse; }
-    .jobs-table th, .jobs-table td { padding: .6rem .5rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--mat-sys-outline-variant, rgba(0,0,0,.12)); }
-    .jobs-table th { font-weight: 600; font-size: .85rem; white-space: nowrap; }
-    .jobs-table tbody tr:hover { background: var(--mat-sys-surface-container-low, rgba(0,0,0,.03)); }
-    .jobs-table .num, .jobs-table .actions { text-align: right; }
-    .jobs-table .actions .row { justify-content: flex-end; }
-    .nowrap { white-space: nowrap; }
-    .title { font-weight: 600; }
-    .mt-sm { margin-top: .35rem; }
-    @media (max-width: 720px) { .form { grid-template-columns: 1fr; } }
+    .toolbar { margin-bottom: 1rem; gap: 1rem; }
+    .job { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1rem 1.25rem; align-items: center; }
+    .job.dismissed { opacity: .65; }
+    .job .body { display: grid; gap: .45rem; min-width: 0; }
+    .job .head { display: flex; align-items: center; gap: .75rem; min-width: 0; }
+    .job .title { font-weight: 600; font-size: 1rem; color: var(--ajh-text); text-decoration: none; }
+    .job .title:hover { color: var(--ajh-primary); text-decoration: underline; }
+    .job .chip .material-symbols-rounded { font-size: .85rem; }
+    .job-actions { display: flex; align-items: center; gap: .4rem; flex-wrap: nowrap; }
+    p-paginator { display: block; margin-top: 1rem; }
+    @media (max-width: 900px) {
+      .job { grid-template-columns: auto minmax(0, 1fr); }
+      .job-actions { grid-column: 1 / -1; justify-content: flex-end; flex-wrap: wrap; }
+    }
+    @media (max-width: 720px) { .form { grid-template-columns: 1fr; } .job .head { flex-wrap: wrap; } }
   `]
 })
 export class JobsComponent {
@@ -227,6 +223,17 @@ export class JobsComponent {
   }
 
   onPage(event: PaginatorState): void { this.pageIndex.set(event.page ?? 0); this.pageSize.set(event.rows ?? this.pageSize()); }
+
+  private readonly locationCache = new Map<string, string[]>();
+  locations(value: string): string[] {
+    let parts = this.locationCache.get(value);
+    if (!parts) {
+      parts = value.split(/\s*[;|]\s*/).map(p => p.trim()).filter(Boolean);
+      if (!parts.length) parts = [value];
+      this.locationCache.set(value, parts);
+    }
+    return parts;
+  }
 
   reset(): void { this.form = { title: '', company: '', location: '', source: 'Manual', url: '', description: '' }; this.warnings.set([]); this.importUrl = ''; }
 
