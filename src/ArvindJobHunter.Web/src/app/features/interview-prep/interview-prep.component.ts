@@ -2,7 +2,7 @@ import { Component, Input, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { MatSelectModule } from '@angular/material/select';
+import { SelectModule } from 'primeng/select';
 import { ApiService } from '../../core/api.service';
 import { InterviewPrepPlan, InterviewResource, Job } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
@@ -14,15 +14,15 @@ import { ProgressBarModule } from 'primeng/progressbar';
 @Component({
   selector: 'app-interview-prep',
   standalone: true,
-  imports: [ButtonModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, MatSelectModule, PageHeaderComponent],
+  imports: [ButtonModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, SelectModule, PageHeaderComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Get ready" title="Interview prep" icon="school" subtitle="Curated external resources for the skills this role requires. Links open in a new tab — nothing is downloaded or embedded here.">
         <div class="field">
-          <label class="field-label">Job</label>
-          <mat-select [value]="selectedId()" (valueChange)="select($event)">
-            @for (j of jobs(); track j.id) { <mat-option [value]="j.id">{{ j.title }} · {{ j.company }}</mat-option> }
-          </mat-select>
+          <label class="field-label" for="prep-job">Job</label>
+          <p-select inputId="prep-job" [ngModel]="selectedId()" (ngModelChange)="select($event)" [options]="jobs()" optionValue="id" placeholder="Choose a job" appendTo="body">
+            <ng-template #selectedItem let-j>{{ j.title }} · {{ j.company }}</ng-template><ng-template #item let-j>{{ j.title }} · {{ j.company }}</ng-template>
+          </p-select>
         </div>
       </app-page-header>
 

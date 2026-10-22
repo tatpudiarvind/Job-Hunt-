@@ -3,8 +3,9 @@ import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AccordionModule } from 'primeng/accordion';
-import { MatSelectModule } from '@angular/material/select';
-import { MatRadioModule } from '@angular/material/radio';
+import { SelectModule } from 'primeng/select';
+import { MultiSelectModule } from 'primeng/multiselect';
+import { RadioButtonModule } from 'primeng/radiobutton';
 import { ApiService } from '../../core/api.service';
 import { GoogleOAuthSettings, GoogleStatus, JobSearchPreferences, Settings, SiteSetting } from '../../core/models';
 import { SettingsStateService } from '../../core/settings-state.service';
@@ -22,7 +23,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, DecimalPipe, FormsModule, AccordionModule, MatSelectModule, MatRadioModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, DecimalPipe, FormsModule, AccordionModule, SelectModule, MultiSelectModule, RadioButtonModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Configuration" title="Settings" icon="settings" subtitle="Control how far the assistant is allowed to go. Changes take effect immediately." />
@@ -67,20 +68,20 @@ import { ProgressBarModule } from 'primeng/progressbar';
               </button>
             </div>
             <form class="stack" (ngSubmit)="save()">
-              <mat-radio-group class="modes" name="mode" [(ngModel)]="form.mode">
+              <div class="modes" role="radiogroup" aria-label="Execution mode">
                 <label class="mode" [class.selected]="form.mode === 'DEMO'">
-                  <mat-radio-button value="DEMO" />
+                  <p-radiobutton name="mode" value="DEMO" [(ngModel)]="form.mode" />
                   <div><div class="row"><b>Demo</b><app-status-chip status="DEMO" /></div><span class="muted small">Nothing external, no files written. Safe for exploring.</span></div>
                 </label>
                 <label class="mode" [class.selected]="form.mode === 'DRY_RUN'">
-                  <mat-radio-button value="DRY_RUN" />
+                  <p-radiobutton name="mode" value="DRY_RUN" [(ngModel)]="form.mode" />
                   <div><div class="row"><b>Dry run</b><app-status-chip status="DRY_RUN" /></div><span class="muted small">Full workflow with simulated external actions and receipts.</span></div>
                 </label>
                 <label class="mode" [class.selected]="form.mode === 'LIVE'">
-                  <mat-radio-button value="LIVE" />
+                  <p-radiobutton name="mode" value="LIVE" [(ngModel)]="form.mode" />
                   <div><div class="row"><b>Live</b><app-status-chip status="LIVE" /></div><span class="muted small">Real resume files and Gmail — only after you approve and execute each action.</span></div>
                 </label>
-              </mat-radio-group>
+              </div>
 
               @if (llmHelp()) {
                 <div class="alert info">
@@ -95,12 +96,8 @@ import { ProgressBarModule } from 'primeng/progressbar';
               }
 
               <div class="field">
-                <label class="field-label">LLM provider</label>
-                <mat-select name="llmProvider" [(ngModel)]="form.llmProvider" (selectionChange)="onProviderChange($event.value)">
-                  <mat-option value="Demo">Demo (offline, deterministic)</mat-option>
-                  <mat-option value="OpenAI">OpenAI-compatible API</mat-option>
-                  <mat-option value="Gemini">Google Gemini</mat-option>
-                </mat-select>
+                <label class="field-label" for="llm-provider">LLM provider</label>
+                <p-select inputId="llm-provider" name="llmProvider" [(ngModel)]="form.llmProvider" (onChange)="onProviderChange($event.value)" [options]="providerOptions" optionLabel="label" optionValue="value" appendTo="body" />
               </div>
 
               <div class="field">
@@ -149,12 +146,8 @@ import { ProgressBarModule } from 'primeng/progressbar';
             <p class="muted small">Choose the European countries and profile signals used during job discovery. Resume facts drive the matching; your LinkedIn URL is stored for auto-fill and future enrichment.</p>
             <form class="stack" (ngSubmit)="saveJobSearchPreferences()">
               <div class="field">
-                <label class="field-label">Preferred countries</label>
-                <mat-select name="preferredCountries" [(ngModel)]="jobSearchForm.preferredCountries" multiple>
-                  @for (country of countryOptions; track country) {
-                    <mat-option [value]="country">{{ country }}</mat-option>
-                  }
-                </mat-select>
+                <label class="field-label" for="preferred-countries">Preferred countries</label>
+                <p-multiselect inputId="preferred-countries" name="preferredCountries" [(ngModel)]="jobSearchForm.preferredCountries" [options]="countryOptions" display="chip" placeholder="Choose countries" appendTo="body" />
                 <small class="field-hint">Select one or more target countries for job discovery.</small>
               </div>
 
@@ -183,13 +176,8 @@ import { ProgressBarModule } from 'primeng/progressbar';
               </div>
 
               <div class="field">
-                <label class="field-label">Work mode</label>
-                <mat-select name="workMode" [(ngModel)]="jobSearchForm.workMode">
-                  <mat-option value="">No preference</mat-option>
-                  @for (mode of workModeOptions; track mode) {
-                    <mat-option [value]="mode">{{ mode }}</mat-option>
-                  }
-                </mat-select>
+                <label class="field-label" for="work-mode">Work mode</label>
+                <p-select inputId="work-mode" name="workMode" [(ngModel)]="jobSearchForm.workMode" [options]="workModeSelectOptions" optionLabel="label" optionValue="value" appendTo="body" />
               </div>
 
               <div class="field">
@@ -235,11 +223,8 @@ import { ProgressBarModule } from 'primeng/progressbar';
             </div>
             <div class="row end mt">
               <div class="field">
-                <label class="field-label">Use for country</label>
-                <mat-select [(ngModel)]="resumeCountry">
-                  <mat-option value="">All countries (master)</mat-option>
-                  @for (c of resumeCountryOptions; track c.code) { <mat-option [value]="c.code">{{ c.name }}</mat-option> }
-                </mat-select>
+                <label class="field-label" for="resume-country">Use for country</label>
+                <p-select inputId="resume-country" [(ngModel)]="resumeCountry" [options]="resumeCountrySelectOptions" optionLabel="name" optionValue="code" appendTo="body" />
               </div>
               @if (resumeFile) { <button pButton text type="button" [disabled]="busy()" (click)="resumeFile = null">Clear</button> }
               <button pButton type="button" [disabled]="busy() || !resumeFile" (click)="uploadResume()"><span class="material-symbols-rounded">cloud_upload</span>Upload resume</button>
@@ -380,6 +365,12 @@ export class SettingsComponent {
     'Czech Republic', 'Hungary', 'Romania', 'Other European Countries', 'Singapore', 'United Arab Emirates'
   ];
   readonly workModeOptions = ['Remote', 'Hybrid', 'Onsite', 'Flexible'];
+  readonly workModeSelectOptions = [{ label: 'No preference', value: '' }, ...this.workModeOptions.map(m => ({ label: m, value: m }))];
+  readonly providerOptions = [
+    { label: 'Demo (offline, deterministic)', value: 'Demo' },
+    { label: 'OpenAI-compatible API', value: 'OpenAI' },
+    { label: 'Google Gemini', value: 'Gemini' }
+  ];
   form = { mode: 'DEMO', llmProvider: 'Demo', llmDisplayName: 'Demo', llmBaseUrl: 'https://api.openai.com/v1/', llmApiKey: '', llmModel: 'gpt-4o-mini', masterResumePath: '' };
   jobSearchForm = { preferredCountries: [] as string[], linkedInProfileUrl: '', preferredRolesText: '', workMode: '', salaryExpectation: '', workAuthorization: '' };
   googleForm = { clientId: '', clientSecret: '', redirectUri: 'http://localhost:5228/api/integrations/google/callback', clientSecretConfigured: false, configured: false };
@@ -508,6 +499,7 @@ export class SettingsComponent {
     { code: 'US', name: 'United States' }, { code: 'CA', name: 'Canada' }, { code: 'GB', name: 'United Kingdom' }, { code: 'IE', name: 'Ireland' },
     { code: 'DE', name: 'Germany' },
     { code: 'AE', name: 'United Arab Emirates' }, { code: 'SG', name: 'Singapore' }, { code: 'IN', name: 'India' }];
+  readonly resumeCountrySelectOptions = [{ code: '', name: 'All countries (master)' }, ...this.resumeCountryOptions];
   countryResumes(s: Settings) { return Object.entries(s.countryResumePaths ?? {}); }
   removeCountryResume(country: string) {
     return this.run(async () => {

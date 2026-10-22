@@ -2,9 +2,9 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { SelectButtonModule } from 'primeng/selectbutton';
 import { AccordionModule } from 'primeng/accordion';
-import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { PaginatorModule, PaginatorState } from 'primeng/paginator';
 import { ApiService } from '../../core/api.service';
 import { Job, SkillDemandReport } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
@@ -23,7 +23,7 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
 @Component({
   selector: 'app-jobs',
   standalone: true,
-  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, MatButtonToggleModule, AccordionModule, MatPaginatorModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, SelectButtonModule, AccordionModule, PaginatorModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Pipeline" title="Jobs" icon="work" subtitle="Showing only roles in the UK, Europe, Singapore and the UAE that explicitly mention visa sponsorship (change countries in Settings). Discover roles from supported public career sites, then review or start the approval-gated apply workflow.">
@@ -103,12 +103,7 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
             <span class="material-symbols-rounded field-prefix">search</span>
             <input pInputText placeholder="Search title or company" [ngModel]="query()" (ngModelChange)="query.set($event); pageIndex.set(0)" />
           </div>
-          <mat-button-toggle-group [value]="filter()" (change)="filter.set($event.value); pageIndex.set(0)" hideSingleSelectionIndicator>
-            <mat-button-toggle value="ALL">All ({{ jobs().length }})</mat-button-toggle>
-            <mat-button-toggle value="QUALIFIED">Qualified</mat-button-toggle>
-            <mat-button-toggle value="DISCOVERED">New</mat-button-toggle>
-            <mat-button-toggle value="DISMISSED">Dismissed</mat-button-toggle>
-          </mat-button-toggle-group>
+          <p-selectbutton [options]="filterOptions()" [ngModel]="filter()" (ngModelChange)="filter.set($event); pageIndex.set(0)" optionLabel="label" optionValue="value" [allowEmpty]="false" aria-label="Filter jobs" />
         </div>
 
 		<div class="table-wrap">
@@ -164,7 +159,7 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
 			</tbody>
 		  </table>
 		</div>
-		<mat-paginator [length]="visible().length" [pageIndex]="pageIndex()" [pageSize]="pageSize()" [pageSizeOptions]="[10, 25, 50, 100]" (page)="onPage($event)" showFirstLastButtons aria-label="Select jobs page" />
+		<p-paginator [totalRecords]="visible().length" [first]="pageIndex() * pageSize()" [rows]="pageSize()" [rowsPerPageOptions]="[10, 25, 50, 100]" (onPageChange)="onPage($event)" [showFirstLastIcon]="true" />
       </section>
     </div>
   `,
@@ -202,6 +197,12 @@ export class JobsComponent {
   readonly formOpen = signal(false);
   readonly query = signal('');
   readonly filter = signal<Filter>('ALL');
+  readonly filterOptions = computed(() => [
+    { label: `All (${this.jobs().length})`, value: 'ALL' },
+    { label: 'Qualified', value: 'QUALIFIED' },
+    { label: 'New', value: 'DISCOVERED' },
+    { label: 'Dismissed', value: 'DISMISSED' }
+  ]);
   readonly pageIndex = signal(0);
   readonly pageSize = signal(25);
   readonly visible = computed(() => {
@@ -225,7 +226,7 @@ export class JobsComponent {
     try { this.demand.set(await this.api.skillDemand()); } catch { this.demand.set(null); }
   }
 
-  onPage(event: PageEvent): void { this.pageIndex.set(event.pageIndex); this.pageSize.set(event.pageSize); }
+  onPage(event: PaginatorState): void { this.pageIndex.set(event.page ?? 0); this.pageSize.set(event.rows ?? this.pageSize()); }
 
   reset(): void { this.form = { title: '', company: '', location: '', source: 'Manual', url: '', description: '' }; this.warnings.set([]); this.importUrl = ''; }
 

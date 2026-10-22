@@ -1,8 +1,8 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
-import { MatSelectModule } from '@angular/material/select';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { SelectModule } from 'primeng/select';
+import { SelectButtonModule } from 'primeng/selectbutton';
 import { ApiService } from '../../core/api.service';
 import { CandidateFact, CandidateProfile } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
@@ -23,7 +23,7 @@ function blankProfile(): CandidateProfile {
 @Component({
   selector: 'app-profile',
   standalone: true,
-  imports: [ButtonModule, InputTextModule, TooltipModule, ProgressBarModule, FormsModule, MatSelectModule, MatButtonToggleModule, PageHeaderComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TooltipModule, ProgressBarModule, FormsModule, SelectModule, SelectButtonModule, PageHeaderComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Truth layer" title="Profile & verified facts" icon="person" subtitle="Only verified facts are used for matching and resume tailoring. The agent cannot invent experience you have not recorded here." />
@@ -50,8 +50,8 @@ function blankProfile(): CandidateProfile {
             <div class="card-title"><span class="material-symbols-rounded">add_circle</span>Add a fact</div>
             <form class="stack" (ngSubmit)="addFact()">
               <div class="field">
-                <label class="field-label">Type</label>
-                <mat-select name="type" [(ngModel)]="fact.factType">@for (t of types; track t) { <mat-option [value]="t">{{ t }}</mat-option> }</mat-select>
+                <label class="field-label" for="fact-type">Type</label>
+                <p-select inputId="fact-type" name="type" [(ngModel)]="fact.factType" [options]="types" appendTo="body" />
               </div>
               <div class="field"><label class="field-label" for="f-fname">Name</label><input id="f-fname" pInputText name="fname" [(ngModel)]="fact.name" required placeholder="e.g. Kubernetes" /></div>
               <div class="field"><label class="field-label" for="f-fvalue">Value</label><input id="f-fvalue" pInputText name="fvalue" [(ngModel)]="fact.value" required placeholder="e.g. 3 years, production clusters at Acme" /></div>
@@ -64,11 +64,7 @@ function blankProfile(): CandidateProfile {
         <section class="card">
           <div class="row between toolbar">
             <div class="card-title no-mb"><span class="material-symbols-rounded">verified</span>Facts <span class="muted">({{ facts().length }})</span></div>
-            <mat-button-toggle-group [value]="filter()" (change)="filter.set($event.value)" hideSingleSelectionIndicator>
-              <mat-button-toggle value="ALL">All</mat-button-toggle>
-              <mat-button-toggle value="VERIFIED">Verified ({{ verifiedCount() }})</mat-button-toggle>
-              <mat-button-toggle value="UNVERIFIED">Unverified ({{ facts().length - verifiedCount() }})</mat-button-toggle>
-            </mat-button-toggle-group>
+            <p-selectbutton [options]="filterOptions()" [ngModel]="filter()" (ngModelChange)="filter.set($event)" optionLabel="label" optionValue="value" [allowEmpty]="false" aria-label="Filter facts" />
           </div>
           @for (f of visible(); track f.id) {
             <div class="item fact">
@@ -115,6 +111,11 @@ export class ProfileComponent {
   readonly loaded = signal(false);
   readonly filter = signal<'ALL' | 'VERIFIED' | 'UNVERIFIED'>('ALL');
   readonly verifiedCount = computed(() => this.facts().filter(f => f.isVerified).length);
+  readonly filterOptions = computed(() => [
+    { label: 'All', value: 'ALL' },
+    { label: `Verified (${this.verifiedCount()})`, value: 'VERIFIED' },
+    { label: `Unverified (${this.facts().length - this.verifiedCount()})`, value: 'UNVERIFIED' }
+  ]);
   readonly visible = computed(() => { const f = this.filter(); return this.facts().filter(x => f === 'ALL' || (f === 'VERIFIED') === x.isVerified); });
   fact = { factType: 'SKILL', name: '', value: '', sourceReference: '' };
 

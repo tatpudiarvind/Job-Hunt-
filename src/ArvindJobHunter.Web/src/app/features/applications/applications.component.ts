@@ -2,9 +2,8 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { MatSelectModule } from '@angular/material/select';
+import { SelectModule } from 'primeng/select';
 import { AccordionModule } from 'primeng/accordion';
-import { MatMenuModule } from '@angular/material/menu';
 import { ApiService } from '../../core/api.service';
 import { ApplicationReview, Job, JobApplication, SubmissionPackage } from '../../core/models';
 import { describeError } from '../../core/auth.interceptor';
@@ -20,7 +19,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
 @Component({
   selector: 'app-applications',
   standalone: true,
-  imports: [ButtonModule, InputTextModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, MatSelectModule, AccordionModule, MatMenuModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, SelectModule, AccordionModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Tracking" title="Applications" icon="assignment_turned_in" subtitle="Move applications through your pipeline and schedule follow-up reminders. Status changes are local bookkeeping — they never trigger external actions.">
@@ -56,10 +55,8 @@ import { ProgressBarModule } from 'primeng/progressbar';
                   <h4>Status</h4>
                   <div class="row">
                     <div class="field">
-                      <label class="field-label">Move to</label>
-                      <mat-select [ngModel]="nextStatus[app.id] ?? ''" (ngModelChange)="nextStatus[app.id] = $event">
-                        @for (s of statuses(); track s) { @if (s !== app.status) { <mat-option [value]="s">{{ s.replace('_', ' ') }}</mat-option> } }
-                      </mat-select>
+                      <label class="field-label" [for]="'move-' + app.id">Move to</label>
+                      <p-select [inputId]="'move-' + app.id" [ngModel]="nextStatus[app.id] ?? ''" (ngModelChange)="nextStatus[app.id] = $event" [options]="statusOptions(app.status)" optionLabel="label" optionValue="value" placeholder="Choose status" appendTo="body" />
                     </div>
                     <button pButton [disabled]="busy() || !nextStatus[app.id]" (click)="transition(app)">Update</button>
                   </div>
@@ -172,6 +169,14 @@ export class ApplicationsComponent {
   private readonly notify = inject(NotifyService);
   readonly applications = signal<JobApplication[]>([]);
   readonly statuses = signal<string[]>([]);
+  private readonly statusOptionsByCurrent = computed(() => {
+    const all = this.statuses().map(s => ({ label: s.replace('_', ' '), value: s }));
+    return Object.fromEntries(this.statuses().map(c => [c, all.filter(o => o.value !== c)])) as Record<string, { label: string; value: string }[]>;
+  });
+
+  statusOptions(current: string): { label: string; value: string }[] {
+    return this.statusOptionsByCurrent()[current] ?? [];
+  }
   readonly error = signal('');
   readonly busy = signal(false);
   readonly loaded = signal(false);
