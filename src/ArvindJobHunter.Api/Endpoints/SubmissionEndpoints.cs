@@ -102,9 +102,10 @@ public static class SubmissionEndpoints
 
             var current = await settings.GetAsync(ct);
             var keywords = (request.Keywords ?? []).Select(k => k.Trim()).Where(k => k.Length > 0).ToList();
-            var entry = new ResumeLibraryEntry(target, string.IsNullOrWhiteSpace(request.Label) ? Path.GetFileNameWithoutExtension(file.Name) : request.Label.Trim(), keywords);
+            var kind = string.Equals(request.Kind, ResumeLibraryEntry.CoverLetterKind, StringComparison.OrdinalIgnoreCase) ? ResumeLibraryEntry.CoverLetterKind : ResumeLibraryEntry.ResumeKind;
+            var entry = new ResumeLibraryEntry(target, string.IsNullOrWhiteSpace(request.Label) ? Path.GetFileNameWithoutExtension(file.Name) : request.Label.Trim(), keywords, kind);
             await settings.SaveAsync(current with { ResumeLibrary = [.. current.ResumeLibrary, entry] }, ct);
-            await audit.RecordAsync(user.UserId(), "RESUME_IMPORTED", "ResumeLibrary", target, "SUCCESS", entry.Label, ct);
+            await audit.RecordAsync(user.UserId(), kind == ResumeLibraryEntry.CoverLetterKind ? "COVER_LETTER_IMPORTED" : "RESUME_IMPORTED", "ResumeLibrary", target, "SUCCESS", entry.Label, ct);
             return Results.Ok(entry);
         });
 
@@ -122,11 +123,36 @@ public static class SubmissionEndpoints
 
         browser.MapGet("/resume-library", async (IRuntimeSettingsProvider settings, CancellationToken ct) => (await settings.GetAsync(ct)).ResumeLibrary);
 
+        browser.MapGet("/searches", async (IRuntimeSettingsProvider settings, CancellationToken ct) => (await settings.GetAsync(ct)).SavedSearches);
+
+        browser.MapPut("/searches", async Task<IResult> (SaveSearchesRequest request, IRuntimeSettingsProvider settings, CancellationToken ct) =>
+        {
+            var searches = new List<SavedSearch>();
+            foreach (var s in request.Searches)
+            {
+                if (string.IsNullOrWhiteSpace(s.Name) || !Uri.TryCreate(s.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["searches"] = ["Each search needs a name and a http(s) URL."] });
+                searches.Add(new SavedSearch(s.Name.Trim(), uri.ToString()));
+            }
+            var current = await settings.GetAsync(ct);
+            await settings.SaveAsync(current with { SavedSearches = searches }, ct);
+            return Results.Ok(searches);
+        });
+
+        // Lists job links on the one page open in the visible browser, for the user to pick and preview. Never follows links.
+        browser.MapPost("/links", async Task<IResult> ([FromServices] IBrowserApplyClient? client, CancellationToken ct) =>
+        {
+            if (client is null) return Results.Problem("The Worker browser is not configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
+            var page = await client.LinksAsync(ct);
+            return page is null ? Results.NotFound() : Results.Ok(page);
+        });
+
         return endpoints;
     }
 
     public sealed record OpenUrlRequest(string Url);
-    public sealed record ImportDownloadRequest(string Path, string? Label, IReadOnlyList<string>? Keywords);
+    public sealed record SaveSearchesRequest(IReadOnlyList<SavedSearch> Searches);
+    public sealed record ImportDownloadRequest(string Path, string? Label, IReadOnlyList<string>? Keywords, string? Kind = null);
 
     private static IReadOnlyList<SiteSettings> Effective(RuntimeSettings settings) => settings.Sites.Count > 0 ? settings.Sites : SiteSettings.Defaults();
 }

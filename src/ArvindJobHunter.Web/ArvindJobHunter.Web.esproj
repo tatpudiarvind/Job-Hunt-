@@ -2,7 +2,8 @@
   <PropertyGroup>
     <StartupCommand>npm start</StartupCommand>
     <JavaScriptTestFramework>Vitest</JavaScriptTestFramework>
-    <ShouldRunBuildScript>false</ShouldRunBuildScript>
+    <ShouldRunBuildScript>true</ShouldRunBuildScript>
+    <BuildCommand>npm run build</BuildCommand>
     <BuildOutputFolder>$(MSBuildProjectDirectory)\..\..\bin\ArvindJobHunter.Web\browser\</BuildOutputFolder>
   </PropertyGroup>
 </Project>

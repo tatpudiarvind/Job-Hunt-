@@ -1,0 +1,110 @@
+# Job Hunter AI diagrams (Mermaid source)
+
+## 1. Target architecture
+
+```mermaid
+flowchart TB
+  U[Candidate / User<br/>Profile • Review • Edit • Approve]
+  UI[Angular 22 SPA<br/>Dashboard • Search • Application Review Studio]
+  API[ASP.NET Core API — .NET 10 LTS<br/>Modular monolith • auth • validation • domain rules]
+
+  subgraph DATA[Persistence and operations]
+    DB[(SQL Server / Azure SQL<br/>Profiles • jobs • evidence • versions • approvals • audit)]
+    BLOB[(Private object storage<br/>Master CV • DOCX/PDF • snapshots • hashes)]
+    Q[[Durable queue + DLQ<br/>Retries • backoff • idempotency]]
+    OBS[Key Vault + App Insights<br/>Secrets • metrics • traces • alerts]
+  end
+
+  subgraph WORKERS[Background workers]
+    ING[Job ingestion<br/>Normalize • deduplicate • expire]
+    VISA[Sponsorship rules<br/>Country-specific official evidence]
+    AI[AI and documents<br/>Parse • match • tailor • verify]
+    PW[Playwright worker<br/>Prefill • compare live form • safe submit]
+    CONTACT[Recruiter contact finder<br/>Source-backed email or NotFound]
+    MAIL[Mail adapter<br/>Gmail / Microsoft Graph after confirmation]
+  end
+
+  subgraph EXT[External integrations - only permitted access paths]
+    JOBS[Greenhouse • Lever • Ashby<br/>Permitted company career pages]
+    GOV[UK sponsor register<br/>Country-specific official sources]
+    LLM[Configured LLM providers<br/>Minimum necessary data]
+    EMP[Employer application page<br/>Supported ATS path or human handoff]
+    PUB[Official company contact pages<br/>Trusted public contact sources]
+    EMAIL[Candidate mailbox<br/>Gmail / Microsoft 365 OAuth]
+  end
+
+  U --> UI --> API
+  API <--> DB
+  API <--> BLOB
+  API --> Q
+  API -. telemetry / secret refs .-> OBS
+  Q --> ING
+  Q --> VISA
+  Q --> AI
+  Q --> PW
+  Q --> CONTACT
+  Q --> MAIL
+  ING --> JOBS
+  VISA --> GOV
+  AI <--> LLM
+  AI --> BLOB
+  PW <--> EMP
+  CONTACT --> PUB
+  MAIL <--> EMAIL
+  PW --> DB
+  CONTACT --> DB
+  MAIL --> DB
+
+  RULES[Cross-cutting controls<br/>Version-bound human approval • evidence provenance • least privilege<br/>rate limits • content hashes • audit • privacy minimisation]
+  RULES -. governs .-> API
+  RULES -. governs .-> WORKERS
+```
+
+## 2. Discovery and preparation workflow
+
+```mermaid
+flowchart TD
+  A[Candidate profile + immutable master CV] --> B[Discover jobs via permitted source adapters]
+  B --> C[Normalize • deduplicate • retain original URL and snapshot]
+  C --> D[Evaluate sponsorship using vacancy text + official country source]
+  D --> E[Extract requirements and map to verified profile evidence]
+  E --> F{Passes candidate filters?}
+  F -- No --> G[Store excluded reason; keep job link]
+  F -- Yes --> H[Generate tailored CV + cover letter + suggested form answers]
+  H --> I[Recruiter contact discovery from trusted public sources]
+  I --> J{Relevant public email found?}
+  J -- Yes --> K[Prepare editable outreach draft with versioned attachments]
+  J -- No --> L[Show: Not able to find a verified recruiter email for this job profile]
+  K --> M[Review Studio]
+  L --> M
+  M[Review CV • letter • every form field • source evidence • ATS checks]
+```
+
+## 3. Application approval and outreach workflow
+
+```mermaid
+flowchart TD
+  A[Review complete application pack] --> B{Blocking fields or conflicts?}
+  B -- Yes --> C[Edit / confirm / resolve issues]
+  C --> A
+  B -- No --> D[User approves exact immutable version]
+  D --> E[Persist application version ID + document hashes + form hash + timestamp]
+  E --> F[Server revalidates approval, destination, required fields and duplicate guard]
+  F --> G[Prefill permitted employer form]
+  G --> H{Live form exactly matches approved payload?}
+  H -- No --> I[Stop and return to review; approval invalidated]
+  I --> A
+  H -- Yes --> J{Supported and permitted submission path?}
+  J -- No --> K[Human handoff to original job URL]
+  J -- Yes --> L[Submit and store confirmation evidence]
+  L --> N{Outcome confirmed?}
+  N -- Yes --> O[Submitted]
+  N -- No / timeout --> P[SubmissionUnknown; investigate before retry]
+  K --> Q[Track application outcome]
+  O --> Q
+  P --> Q
+  A --> R[Separate outreach review]
+  R --> S[User explicitly confirms current recipient, body and attachments]
+  S --> T[Send through user-authorized Gmail API / Microsoft Graph]
+  T --> U[Track email outcome separately]
+```

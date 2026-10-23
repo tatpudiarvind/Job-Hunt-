@@ -70,6 +70,28 @@ public sealed class LocalFormAdapterTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Fill_UploadsCoverLetterFileOnlyWhenProvided()
+    {
+        if (skipReason is not null) return;
+        const string html = """
+            <form><label for="cv">Resume</label><input id="cv" type="file">
+            <label for="cl">Cover letter</label><input id="cl" type="file"><button type="submit">Submit application</button></form>
+            """;
+        var (page, resume) = await OpenAsync(html);
+        var cover = Path.Combine(Path.GetTempPath(), $"cl-{Guid.NewGuid():N}.pdf");
+        await File.WriteAllTextAsync(cover, "%PDF-1.4");
+
+        var without = await Adapter().FillAsync(page, new FillPreviewRequest("about:blank", resume, null, new Dictionary<string, string>(), "company"), CancellationToken.None);
+        Assert.Contains(without.Fields, f => f.Source == "skipped");
+        Assert.Equal(0, await page.EvalOnSelectorAsync<int>("#cl", "e => e.files.length"));
+
+        var (fresh, _) = await OpenAsync(html);
+        var with = await Adapter().FillAsync(fresh, new FillPreviewRequest("about:blank", resume, null, new Dictionary<string, string>(), "company", cover), CancellationToken.None);
+        Assert.Contains(with.Fields, f => f.Source == "cover letter" && f.Value == Path.GetFileName(cover));
+        Assert.Equal(1, await fresh.EvalOnSelectorAsync<int>("#cl", "e => e.files.length"));
+    }
+
+    [Fact]
     public async Task Submit_ClicksFinalButtonAndReadsConfirmation()
     {
         if (skipReason is not null) return;

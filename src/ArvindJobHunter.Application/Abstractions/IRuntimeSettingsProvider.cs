@@ -19,6 +19,8 @@ public sealed record RuntimeSettings
     public IReadOnlyDictionary<string, string> RoleResumePaths { get; init; } = new Dictionary<string, string>();
     public IReadOnlyList<ResumeLibraryEntry> ResumeLibrary { get; init; } = [];
     public IReadOnlyList<ArvindJobHunter.Domain.Entities.SiteSettings> Sites { get; init; } = [];
+    /// <summary>Job-site search pages the user runs on demand in the visible browser. Never fetched in the background.</summary>
+    public IReadOnlyList<SavedSearch> SavedSearches { get; init; } = [];
 
     public string MasterResumeFor(string? countryCode) =>
         countryCode is not null && CountryResumePaths.TryGetValue(countryCode, out var path) && !string.IsNullOrWhiteSpace(path) ? path : MasterResumePath;
@@ -39,4 +41,11 @@ public interface IRuntimeSettingsProvider
     Task SaveAsync(RuntimeSettings settings, CancellationToken cancellationToken);
 }
 
-public sealed record ResumeLibraryEntry(string Path, string Label, IReadOnlyList<string> Keywords);
+public sealed record SavedSearch(string Name, string Url);
+
+public sealed record ResumeLibraryEntry(string Path, string Label, IReadOnlyList<string> Keywords, string Kind = ResumeLibraryEntry.ResumeKind)
+{
+    public const string ResumeKind = "RESUME";
+    public const string CoverLetterKind = "COVER_LETTER";
+    public bool IsCoverLetter => string.Equals(Kind, CoverLetterKind, StringComparison.OrdinalIgnoreCase);
+}

@@ -47,6 +47,14 @@ public sealed class WorkerBrowserApplyClient(HttpClient http) : IBrowserApplyCli
         return await response.Content.ReadFromJsonAsync<CapturedJobPage>(Json, cancellationToken);
     }
 
+    public async Task<PageLinks?> LinksAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync("/browser/links", null, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        await EnsureAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<PageLinks>(Json, cancellationToken);
+    }
+
     private static async Task EnsureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode) return;

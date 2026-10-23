@@ -114,7 +114,13 @@ public sealed class ConfiguredFormAdapter(SiteConfig config, Func<int, int, Task
                 result.Add(new FillFieldDto(FieldMatcher.Clean(field.Label), Path.GetFileName(request.ResumeFilePath), field.Required, "resume"));
                 continue;
             }
-            if (FieldMatcher.IsCoverLetterUpload(field)) { result.Add(new FillFieldDto(FieldMatcher.Clean(field.Label), null, field.Required, "skipped")); continue; }
+            if (FieldMatcher.IsCoverLetterUpload(field))
+            {
+                if (string.IsNullOrWhiteSpace(request.CoverLetterFilePath)) { result.Add(new FillFieldDto(FieldMatcher.Clean(field.Label), null, field.Required, "skipped")); continue; }
+                await control.SetInputFilesAsync(request.CoverLetterFilePath);
+                result.Add(new FillFieldDto(FieldMatcher.Clean(field.Label), Path.GetFileName(request.CoverLetterFilePath), field.Required, "cover letter"));
+                continue;
+            }
 
             var answer = FieldMatcher.Canonical(field.Label) == "Cover letter" ? request.CoverLetterText : FieldMatcher.Answer(field, request.Answers);
             if (string.IsNullOrWhiteSpace(answer))

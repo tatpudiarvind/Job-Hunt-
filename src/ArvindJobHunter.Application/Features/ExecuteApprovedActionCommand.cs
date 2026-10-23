@@ -303,6 +303,9 @@ public sealed class ExecuteApprovedActionCommand(
         ExternalActionGuard.EnsureSiteAllowed(package.Adapter, sites, SiteSettings.SubmittedToday(await submissions.ListAsync(cancellationToken), package.Adapter, DateTimeOffset.UtcNow));
         if (!File.Exists(package.ResumeFilePath) || ApplicationPackageService.FileHash(package.ResumeFilePath) != package.ResumeSha256)
             throw new ApprovalViolationException("The resume file changed or is missing since the form was prepared. Prepare again.");
+        if (package.CoverLetterFilePath is not null &&
+            (!File.Exists(package.CoverLetterFilePath) || ApplicationPackageService.FileHash(package.CoverLetterFilePath) != package.CoverLetterSha256))
+            throw new ApprovalViolationException("The cover letter file changed or is missing since the form was prepared. Prepare again.");
         if (browser is null || package.SessionId is null)
             return Receipt(approval, key, current.Mode, ExecutionResult.FAILED, null, package.Url, "The browser worker is not available.");
 

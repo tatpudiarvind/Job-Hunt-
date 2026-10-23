@@ -38,7 +38,7 @@ public sealed class ApplicationSubmissionService(
         var current = await settings.GetAsync(cancellationToken);
 
         var choice = ResumeSelector.Select(job, await resumes.ListAsync(cancellationToken), current.RoleResumePaths,
-            current.ResumeLibrary.Select(e => new ResumeCandidate(e.Path, e.Label, e.Keywords)).ToList(),
+            current.ResumeLibrary.Where(e => !e.IsCoverLetter).Select(e => new ResumeCandidate(e.Path, e.Label, e.Keywords)).ToList(),
             current.MasterResumeFor(job.ResolveCountryCode()))
             ?? throw new InvalidOperationException("No resume file is available. Generate a tailored resume or upload a master resume.");
 
@@ -46,17 +46,22 @@ public sealed class ApplicationSubmissionService(
         var cover = application.CoverLetterDraftId is { } coverId ? await emails.GetAsync(coverId, cancellationToken) : null;
         var answers = await AnswersAsync(cancellationToken);
 
-        var preview = await browser.PrepareAsync(new FillPreviewRequest(job.Url, choice.Path, cover?.Body, answers, adapter), cancellationToken);
+        var coverFile = ResumeSelector.SelectCoverLetter(job,
+            current.ResumeLibrary.Where(e => e.IsCoverLetter).Select(e => new ResumeCandidate(e.Path, e.Label, e.Keywords)).ToList());
+
+        var preview = await browser.PrepareAsync(new FillPreviewRequest(job.Url, choice.Path, cover?.Body, answers, adapter, coverFile?.Path), cancellationToken);
         var now = DateTimeOffset.UtcNow;
+        var coverUploaded = coverFile is not null && preview.Fields.Any(f => f.Source == "cover letter");
         var package = new SubmissionPackage(
             Guid.NewGuid(), jobId, application.Id, job.Url, preview.Adapter, choice.Path, ApplicationPackageService.FileHash(choice.Path), cover?.Body,
             preview.Fields.Select(f => new SubmissionField(f.Label, f.Value, f.Required, f.Source)).ToList(),
             preview.UnansweredFields, preview.ScreenshotPath,
             preview.UnansweredFields.Count == 0 && preview.Blocker is null ? SubmissionStatus.PREPARED : SubmissionStatus.NEEDS_ANSWERS,
-            null, now, now, preview.SessionId, preview.Blocker);
+            null, now, now, preview.SessionId, preview.Blocker,
+            coverUploaded ? coverFile!.Path : null, coverUploaded ? ApplicationPackageService.FileHash(coverFile!.Path) : null);
         await submissions.UpsertAsync(package, cancellationToken);
         await audit.RecordAsync(userId, "SUBMISSION_PREPARED", "SubmissionPackage", package.Id.ToString(), package.Status.ToString(),
-            $"{preview.Adapter} {new Uri(job.Url).Host}; resume: {choice.Reason}", cancellationToken);
+            $"{preview.Adapter} {new Uri(job.Url).Host}; resume: {choice.Reason}{(coverUploaded ? $"; {coverFile!.Reason}" : "")}", cancellationToken);
         logger.LogInformation("Submission {Id} prepared for job {JobId} via {Adapter}; {Missing} unanswered", package.Id, jobId, preview.Adapter, preview.UnansweredFields.Count);
 
         return preview.Blocker is null && package.ReadyForApproval ? await RequestApprovalAsync(package, userId, cancellationToken) : package;

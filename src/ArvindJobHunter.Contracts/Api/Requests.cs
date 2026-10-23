@@ -107,7 +107,8 @@ public sealed record FillPreviewRequest(
     string ResumeFilePath,
     string? CoverLetterText,
     IReadOnlyDictionary<string, string> Answers,
-    string? Adapter = null);
+    string? Adapter = null,
+    string? CoverLetterFilePath = null);
 
 public sealed record FillPreviewResponse(
     string SessionId,

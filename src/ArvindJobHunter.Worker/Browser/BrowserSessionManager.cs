@@ -63,6 +63,17 @@ public sealed class BrowserSessionManager(BrowserOptions options, AdapterRegistr
         return new CapturedPage(page.Url, heading?.Trim() ?? title, title, text.Length > 20000 ? text[..20000] : text);
     }
 
+    /// <summary>Lists job-posting links on the page the user is looking at. Reads that one page; never opens the links.</summary>
+    public async Task<PageLinksResult?> LinksActiveAsync()
+    {
+        var ctx = await ContextAsync();
+        var page = ctx.Pages.LastOrDefault(p => p.Url.StartsWith("http", StringComparison.OrdinalIgnoreCase));
+        if (page is null) return null;
+        var raw = await page.EvaluateAsync<RawLink[]>("() => Array.from(document.querySelectorAll('a[href]')).map(a => ({ text: a.innerText || a.getAttribute('aria-label') || '', href: a.getAttribute('href') }))");
+        var links = JobLinkFilter.Filter(page.Url, raw).Select(l => new PageLinkResult(l.Text, l.Url)).ToList();
+        return new PageLinksResult(page.Url, links);
+    }
+
     public async Task<FillPreviewResponse> PrepareAsync(FillPreviewRequest request, CancellationToken cancellationToken)
     {
         if (!Uri.TryCreate(request.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))

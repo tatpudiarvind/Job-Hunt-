@@ -53,6 +53,26 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
             <button pButton outlined type="button" [disabled]="busy() || !importUrl" (click)="openInBrowser()"><span class="material-symbols-rounded">open_in_browser</span>Open in browser</button>
             <button pButton outlined type="button" [disabled]="busy()" (click)="captureFromBrowser()"><span class="material-symbols-rounded">screen_share</span>Use page open in browser</button>
           </div>
+          <details class="searches" (toggle)="loadSearches()">
+            <summary>Saved searches</summary>
+            <p class="muted small">Runs only when you click Run: the search opens in the visible browser, then "List jobs on page" reads that one page. Pick a job to preview it.</p>
+            @for (s of searches(); track s.url; let i = $index) {
+              <div class="row wrap">
+                <span class="grow small"><b>{{ s.name }}</b> · {{ s.url }}</span>
+                <button pButton text type="button" [disabled]="busy()" (click)="runSearch(s.url)">Run</button>
+                <button pButton text type="button" [disabled]="busy()" (click)="removeSearch(i)">Remove</button>
+              </div>
+            }
+            <div class="row wrap">
+              <input pInputText name="searchName" [(ngModel)]="newSearch.name" placeholder="Name, e.g. .NET Berlin" />
+              <input pInputText class="grow" name="searchUrl" [(ngModel)]="newSearch.url" placeholder="Search results URL" />
+              <button pButton outlined type="button" [disabled]="busy() || !newSearch.name || !newSearch.url" (click)="addSearch()">Save search</button>
+              <button pButton outlined type="button" [disabled]="busy()" (click)="listLinks()"><span class="material-symbols-rounded">list</span>List jobs on page</button>
+            </div>
+            @for (l of links(); track l.url) {
+              <div class="row wrap"><span class="grow small">{{ l.text }}</span><button pButton text type="button" [disabled]="busy()" (click)="pickLink(l.url)">Preview</button></div>
+            }
+          </details>
           @if (warnings().length) {
             <div class="alert warn"><span class="material-symbols-rounded">info</span><div>@for (w of warnings(); track w) { <div>{{ w }}</div> }</div></div>
           }
@@ -258,6 +278,43 @@ export class JobsComponent {
   openInBrowser(): Promise<void> {
     return this.run(async () => { await this.api.openInBrowser(this.importUrl); this.notify.info('Opened in the browser window. Sign in if needed, then use "Use page open in browser".'); }, false);
   }
+
+  readonly searches = signal<{ name: string; url: string }[]>([]);
+  readonly links = signal<{ text: string; url: string }[]>([]);
+  newSearch = { name: '', url: '' };
+  private searchesLoaded = false;
+
+  loadSearches(): void {
+    if (this.searchesLoaded) return;
+    this.searchesLoaded = true;
+    this.api.savedSearches().then(s => this.searches.set(s)).catch(e => this.error.set(describeError(e)));
+  }
+
+  addSearch(): Promise<void> {
+    return this.run(async () => {
+      this.searches.set(await this.api.saveSearches([...this.searches(), { name: this.newSearch.name.trim(), url: this.newSearch.url.trim() }]));
+      this.newSearch = { name: '', url: '' };
+      this.notify.success('Search saved.');
+    }, false);
+  }
+
+  removeSearch(index: number): Promise<void> {
+    return this.run(async () => { this.searches.set(await this.api.saveSearches(this.searches().filter((_, i) => i !== index))); }, false);
+  }
+
+  runSearch(url: string): Promise<void> {
+    return this.run(async () => { await this.api.openInBrowser(url); this.links.set([]); this.notify.info('Search opened in the browser window. When results show, click "List jobs on page".'); }, false);
+  }
+
+  listLinks(): Promise<void> {
+    return this.run(async () => {
+      const page = await this.api.browserLinks();
+      this.links.set(page.links);
+      this.notify.info(page.links.length ? `Found ${page.links.length} job link(s) on the page.` : 'No job links found on this page.');
+    }, false);
+  }
+
+  pickLink(url: string): Promise<void> { this.importUrl = url; return this.importFromUrl(); }
 
   captureFromBrowser(): Promise<void> {
     return this.run(async () => {

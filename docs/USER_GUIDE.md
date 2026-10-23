@@ -76,6 +76,7 @@ Open **Jobs**. There are four ways to add a job:
 2. **Import from a URL**: paste the job link and let the app fill in the form. Check it, then save.
 3. **From the visible browser**: click **Open in browser**, log in to the site yourself if needed, then click **Use page open in browser**. The form is filled from the page you are looking at. Check the company name, then save.
 4. **Discover sponsored jobs**: search connected job sources for roles in the UK, Europe, Singapore and the UAE that mention visa sponsorship and match your preferences.
+5. **Saved searches**: under **Saved searches**, save a name and a search-results URL (for example a LinkedIn or Indeed search). Click **Run** to open it in the visible browser, sign in if asked, then click **List jobs on page**. The app reads the links on that one page only and never follows them. Click **Preview** on a job to fill the form from it.
 
 Nothing is saved until you click save.
 
@@ -134,9 +135,9 @@ If you build resume versions on ResumeNow:
 
 1. In **Settings → Resume library**, click **Open ResumeNow**. It opens in the visible browser.
 2. Log in, edit and **download** your resume as a PDF there yourself.
-3. Click **Refresh downloads**, enter keywords (for example `uk, .net, backend`) and click **Import**.
+3. Click **Refresh downloads**, choose **Resume** or **Cover letter**, enter keywords (for example `uk, .net, backend`) and click **Import**.
 
-The app picks the library resume whose keywords best match each job. If none match, it uses your master resume.
+The app picks the library resume whose keywords best match each job. If none match, it uses your master resume. A cover-letter PDF is uploaded only when its keywords match the job and the form has a cover-letter upload field. It is part of what you approve, so changing the file afterwards means you must approve again.
 
 ## 11. Track applications and follow up
 

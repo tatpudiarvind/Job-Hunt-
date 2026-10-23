@@ -112,6 +112,46 @@ public sealed class BrowserEndpointsTests
     }
 
     [Fact]
+    public async Task ImportDownload_AsCoverLetter_IsStoredWithKind()
+    {
+        using var factory = new BrowserApiFactory();
+        var download = factory.AddDownload("Cover.pdf");
+        var client = await SignedInClientAsync(factory);
+
+        var entry = await (await client.PostAsJsonAsync("/api/browser/downloads/import", new { path = download, label = "Cover", keywords = new[] { ".net" }, kind = "COVER_LETTER" }))
+            .EnsureSuccessStatusCode().Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("COVER_LETTER", entry.GetProperty("kind").GetString());
+    }
+
+    [Fact]
+    public async Task SavedSearches_RoundTripAndRejectInvalidUrls()
+    {
+        using var factory = new BrowserApiFactory();
+        var client = await SignedInClientAsync(factory);
+
+        var bad = await client.PutAsJsonAsync("/api/browser/searches", new { searches = new[] { new { name = "x", url = "javascript:alert(1)" } } });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        (await client.PutAsJsonAsync("/api/browser/searches", new { searches = new[] { new { name = " .NET Berlin ", url = "https://jobs.example.com/search?q=.net&l=berlin" } } })).EnsureSuccessStatusCode();
+        var saved = await client.GetFromJsonAsync<JsonElement>("/api/browser/searches");
+        Assert.Equal(1, saved.GetArrayLength());
+        Assert.Equal(".NET Berlin", saved[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task Links_ReturnsWorkerLinksOr404()
+    {
+        using var factory = new BrowserApiFactory();
+        var client = await SignedInClientAsync(factory);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync("/api/browser/links", null)).StatusCode);
+
+        factory.Browser.Links = new PageLinks("https://jobs.example.com/search", [new PageLink("Engineer", "https://jobs.example.com/jobs/1")]);
+        var page = await (await client.PostAsync("/api/browser/links", null)).EnsureSuccessStatusCode().Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("https://jobs.example.com/jobs/1", page.GetProperty("links")[0].GetProperty("url").GetString());
+    }
+
+    [Fact]
     public async Task BrowserEndpoints_RequireSignIn()
     {
         using var factory = new BrowserApiFactory();
@@ -191,6 +231,8 @@ public sealed class BrowserEndpointsTests
 
         public Task<IReadOnlyList<DownloadedFile>> DownloadsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<DownloadedFile>>(Downloads);
         public Task<CapturedJobPage?> CaptureAsync(CancellationToken cancellationToken) => Task.FromResult(Page);
+        public PageLinks? Links { get; set; }
+        public Task<PageLinks?> LinksAsync(CancellationToken cancellationToken) => Task.FromResult(Links);
         public Task OpenAsync(string url, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<FillPreviewResponse> PrepareAsync(FillPreviewRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task BindAsync(string sessionId, string payloadHash, CancellationToken cancellationToken) => throw new NotSupportedException();
