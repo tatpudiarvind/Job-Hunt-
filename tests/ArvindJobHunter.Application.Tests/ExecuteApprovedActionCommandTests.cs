@@ -101,6 +101,27 @@ public sealed class ExecuteApprovedActionCommandTests : IDisposable
         Assert.Equal(0, browser.Submits);
     }
 
+    [Fact]
+    public async Task Submit_Live_WhenCoverLetterFileChanged_IsBlocked()
+    {
+        var cover = Path.Combine(Path.GetTempPath(), $"ajh-cover-{Guid.NewGuid():N}.pdf");
+        File.WriteAllBytes(cover, [4, 5, 6]);
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var package = new SubmissionPackage(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "https://jobs.example.com/1", "company", masterResume,
+                ApplicationPackageService.FileHash(masterResume), null, [new SubmissionField("Email", "a@b.com", true, "profile")], [], null,
+                SubmissionStatus.AWAITING_APPROVAL, null, now, now, "session-1", null, cover, ApplicationPackageService.FileHash(cover));
+            await submissions.UpsertAsync(package, CancellationToken.None);
+            var approval = await ApprovedAsync(ApprovalActionType.SUBMIT_APPLICATION, package.Id, package.PayloadForApproval(), ExecutionMode.LIVE);
+            File.WriteAllBytes(cover, [7, 7, 7]);
+
+            await Assert.ThrowsAsync<ApprovalViolationException>(() => Command(ExecutionMode.LIVE).ExecuteAsync(approval.Id, "s1", LocalUser.Id, CancellationToken.None));
+            Assert.Equal(0, browser.Submits);
+        }
+        finally { File.Delete(cover); }
+    }
+
     private sealed class FakeBrowser : IBrowserApplyClient
     {
         public int Submits { get; private set; }
@@ -114,6 +135,7 @@ public sealed class ExecuteApprovedActionCommandTests : IDisposable
         public Task OpenAsync(string url, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<IReadOnlyList<DownloadedFile>> DownloadsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<DownloadedFile>>([]);
         public Task<CapturedJobPage?> CaptureAsync(CancellationToken cancellationToken) => Task.FromResult<CapturedJobPage?>(null);
+        public Task<PageLinks?> LinksAsync(CancellationToken cancellationToken) => Task.FromResult<PageLinks?>(null);
     }
 
     private async Task<ApprovalRequest> ApprovedAsync(ApprovalActionType action, Guid targetId, string payload, ExecutionMode mode)

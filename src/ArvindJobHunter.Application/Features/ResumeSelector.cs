@@ -53,6 +53,20 @@ public static class ResumeSelector
             : null;
     }
 
+    /// <summary>Picks an imported cover-letter file whose keywords match the job. No match means no file is uploaded.</summary>
+    public static ResumeChoice? SelectCoverLetter(Job job, IReadOnlyList<ResumeCandidate> coverLetters, Func<string, bool>? exists = null)
+    {
+        exists ??= File.Exists;
+        var text = $"{job.Title}\n{job.Description}\n{string.Join(' ', job.Analysis?.RequiredSkills ?? [])}";
+        var best = coverLetters
+            .Where(c => exists(c.Path))
+            .Select(c => (Candidate: c, Score: c.Keywords.Count(k => Contains(text, k)) + c.Keywords.Count(k => Contains(job.Title, k) || Contains(job.Company, k))))
+            .Where(c => c.Score > 0)
+            .OrderByDescending(c => c.Score)
+            .FirstOrDefault();
+        return best.Candidate is null ? null : new ResumeChoice(best.Candidate.Path, $"Cover letter keyword match: {best.Candidate.Label} (score {best.Score}).");
+    }
+
     private static string? Prefer(string? pdf, string? other, Func<string, bool> exists) =>
         !string.IsNullOrWhiteSpace(pdf) && exists(pdf) ? pdf : !string.IsNullOrWhiteSpace(other) && exists(other) ? other : null;
 

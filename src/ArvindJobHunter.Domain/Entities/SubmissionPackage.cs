@@ -35,7 +35,9 @@ public sealed record SubmissionPackage(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     string? SessionId = null,
-    string? ConfirmationText = null)
+    string? ConfirmationText = null,
+    string? CoverLetterFilePath = null,
+    string? CoverLetterSha256 = null)
 {
     public bool ReadyForApproval => UnansweredFields.Count == 0;
 
@@ -45,6 +47,7 @@ public sealed record SubmissionPackage(
             .Append("SUBMIT|").Append(JobId).Append('|').Append(Url).Append('|').Append(Adapter).Append('\n')
             .Append("resume:").Append(ResumeSha256).Append('\n')
             .Append("cover:").Append(CoverLetterText).Append('\n');
+        if (CoverLetterSha256 is not null) builder.Append("coverfile:").Append(CoverLetterSha256).Append('\n');
         foreach (var field in Fields.OrderBy(f => f.Label, StringComparer.Ordinal))
             builder.Append(field.Label).Append('=').Append(field.Value).Append('\n');
         return builder.ToString();

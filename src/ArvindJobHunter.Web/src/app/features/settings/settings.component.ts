@@ -54,10 +54,11 @@ import { ProgressBarModule } from 'primeng/progressbar';
             <div class="row wrap">
               <span class="grow small">{{ d.name }}</span>
               <input class="kw" placeholder="Keywords, comma separated" [(ngModel)]="downloadKeywords[d.path]" [name]="'kw-' + d.name" />
+              <select class="kw" [(ngModel)]="downloadKind[d.path]" [name]="'kind-' + d.name"><option value="RESUME">Resume</option><option value="COVER_LETTER">Cover letter</option></select>
               <button pButton outlined type="button" [disabled]="busy()" (click)="importDownload(d.path)">Import</button>
             </div>
           }
-          @for (r of library(); track r.path) { <span class="small"><b>{{ r.label }}</b> · {{ r.keywords.join(', ') || 'no keywords' }}</span> }
+          @for (r of library(); track r.path) { <span class="small"><b>{{ r.label }}</b> · {{ r.kind === 'COVER_LETTER' ? 'Cover letter' : 'Resume' }} · {{ r.keywords.join(', ') || 'no keywords' }}</span> }
         </section>
         <div class="grid-2">
           <section class="card">
@@ -382,8 +383,9 @@ export class SettingsComponent {
 
   readonly sites = signal<SiteSetting[]>([]);
   readonly downloads = signal<{ path: string; name: string }[]>([]);
-  readonly library = signal<{ path: string; label: string; keywords: string[] }[]>([]);
+  readonly library = signal<{ path: string; label: string; keywords: string[]; kind?: string }[]>([]);
   downloadKeywords: Record<string, string> = {};
+  downloadKind: Record<string, 'RESUME' | 'COVER_LETTER'> = {};
   openResumeNow(): Promise<void> {
     return this.run(async () => { await this.api.openInBrowser('https://www.resume-now.com/'); this.notify.info('ResumeNow opened in the browser window.'); });
   }
@@ -392,7 +394,8 @@ export class SettingsComponent {
   }
   importDownload(path: string): Promise<void> {
     const keywords = (this.downloadKeywords[path] ?? '').split(',').map(k => k.trim()).filter(k => k);
-    return this.run(async () => { await this.api.importDownload(path, null, keywords); this.library.set(await this.api.resumeLibrary()); this.notify.success('Resume added to the library.'); });
+    const kind = this.downloadKind[path] ?? 'RESUME';
+    return this.run(async () => { await this.api.importDownload(path, null, keywords, kind); this.library.set(await this.api.resumeLibrary()); this.notify.success(kind === 'COVER_LETTER' ? 'Cover letter added to the library.' : 'Resume added to the library.'); });
   }
   saveSites(): Promise<void> {
     return this.run(async () => { this.sites.set(await this.api.updateSites(this.sites().map(x => ({ adapter: x.adapter, enabled: x.enabled, dailyCap: Number(x.dailyCap) })))); this.notify.success('Site settings saved.'); });

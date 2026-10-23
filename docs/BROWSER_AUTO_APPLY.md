@@ -23,6 +23,12 @@ In DEMO and DRY_RUN modes the final click is simulated.
 
 The order is: the tailored resume generated for the job, then a role mapping (`RoleResumePaths`), then a keyword match from `ResumeLibrary`, then the country or default master resume. A PDF next to the DOCX is used if one exists.
 
+Library entries imported with kind `COVER_LETTER` are never used as resumes. The best keyword match is uploaded to a cover-letter file field. Its SHA-256 is part of the approval payload and is checked again before the final submit.
+
+## Saved searches
+
+Saved searches (`SavedSearches` in runtime settings) are name and URL pairs. **Run** opens the URL in the visible browser. **List jobs on page** calls the Worker `POST /browser/links`, which reads the anchors on the active page once and filters them to job-like links (`JobLinkFilter`, at most 100). Links are never opened automatically. Picking one uses the normal import-from-URL preview.
+
 ## Rules
 
 - Login, MFA and CAPTCHA are always done by you in the visible window. The Worker never bypasses them. Preparation stops and reports the blocker.

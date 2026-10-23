@@ -60,8 +60,11 @@ export class ApiService {
 
   openInBrowser(url: string) { return this.post<void>('/browser/open', { url }); }
   browserDownloads() { return this.get<{ path: string; name: string; size: number; modified: string }[]>('/browser/downloads'); }
-  importDownload(path: string, label: string | null, keywords: string[]) { return this.post<{ path: string; label: string; keywords: string[] }>('/browser/downloads/import', { path, label, keywords }); }
-  resumeLibrary() { return this.get<{ path: string; label: string; keywords: string[] }[]>('/browser/resume-library'); }
+  importDownload(path: string, label: string | null, keywords: string[], kind: 'RESUME' | 'COVER_LETTER' = 'RESUME') { return this.post<{ path: string; label: string; keywords: string[]; kind: string }>('/browser/downloads/import', { path, label, keywords, kind }); }
+  resumeLibrary() { return this.get<{ path: string; label: string; keywords: string[]; kind?: string }[]>('/browser/resume-library'); }
+  savedSearches() { return this.get<{ name: string; url: string }[]>('/browser/searches'); }
+  saveSearches(searches: { name: string; url: string }[]) { return this.put<{ name: string; url: string }[]>('/browser/searches', { searches }); }
+  browserLinks() { return this.post<{ pageUrl: string; links: { text: string; url: string }[] }>('/browser/links'); }
   captureJobFromBrowser() { return this.post<JobPostingDraft>('/browser/capture-job'); }
 
   submissions(jobId?: string) { return this.get<SubmissionPackage[]>(jobId ? `/submissions?jobId=${jobId}` : '/submissions'); }

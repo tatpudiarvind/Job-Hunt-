@@ -26,6 +26,15 @@ public sealed class SubmissionPackageTests
         Assert.NotEqual(Package().PayloadForApproval(), (Package() with { ResumeSha256 = "def" }).PayloadForApproval());
 
     [Fact]
+    public void Payload_ChangesWithCoverLetterFileHash()
+    {
+        var plain = Package();
+        var withCover = plain with { CoverLetterFilePath = "c.pdf", CoverLetterSha256 = "111" };
+        Assert.NotEqual(plain.PayloadForApproval(), withCover.PayloadForApproval());
+        Assert.NotEqual(withCover.PayloadForApproval(), (withCover with { CoverLetterSha256 = "222" }).PayloadForApproval());
+    }
+
+    [Fact]
     public void SubmittedToday_CountsOnlyTodayForAdapter()
     {
         var now = DateTimeOffset.UtcNow;

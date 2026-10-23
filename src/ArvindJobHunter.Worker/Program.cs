@@ -199,7 +199,14 @@ app.MapGet("/browser/downloads", () =>
 app.MapPost("/browser/capture", async (BrowserSessionManager browser) =>
     await browser.CaptureActiveAsync() is { } captured ? Results.Ok(captured) : Results.NotFound(new { error = "No web page is open in the browser." }));
 
+app.MapPost("/browser/links", async (BrowserSessionManager browser) =>
+    await browser.LinksActiveAsync() is { } links ? Results.Ok(links) : Results.NotFound(new { error = "No web page is open in the browser." }));
+
 app.Run();
+
+public sealed record PageLinkResult(string Text, string Url);
+
+public sealed record PageLinksResult(string PageUrl, IReadOnlyList<PageLinkResult> Links);
 
 public sealed record CapturedPage(string Url, string Title, string PageTitle, string Text);
 

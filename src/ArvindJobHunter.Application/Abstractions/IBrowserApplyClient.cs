@@ -12,7 +12,12 @@ public interface IBrowserApplyClient
     Task OpenAsync(string url, CancellationToken cancellationToken);
     Task<IReadOnlyList<DownloadedFile>> DownloadsAsync(CancellationToken cancellationToken);
     Task<CapturedJobPage?> CaptureAsync(CancellationToken cancellationToken);
+    Task<PageLinks?> LinksAsync(CancellationToken cancellationToken);
 }
+
+public sealed record PageLink(string Text, string Url);
+
+public sealed record PageLinks(string PageUrl, IReadOnlyList<PageLink> Links);
 
 public sealed record CapturedJobPage(string Url, string Title, string PageTitle, string Text);
 
