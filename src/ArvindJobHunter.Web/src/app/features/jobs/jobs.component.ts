@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { SelectButtonModule } from 'primeng/selectbutton';
+import { SelectModule } from 'primeng/select';
 import { AccordionModule } from 'primeng/accordion';
 import { PaginatorModule, PaginatorState } from 'primeng/paginator';
 import { ApiService } from '../../core/api.service';
@@ -23,7 +24,7 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
 @Component({
   selector: 'app-jobs',
   standalone: true,
-  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, SelectButtonModule, AccordionModule, PaginatorModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, SelectButtonModule, SelectModule, AccordionModule, PaginatorModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   template: `
     <div class="page">
       <app-page-header eyebrow="Pipeline" title="Jobs" icon="work" subtitle="Showing only roles in the UK, Europe, Singapore and the UAE that explicitly mention visa sponsorship (change countries in Settings). Discover roles from supported public career sites, then review or start the approval-gated apply workflow.">
@@ -126,7 +127,8 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
           <div class="row">
             <span class="muted small">{{ visible().length }} result{{ visible().length === 1 ? '' : 's' }}</span>
             <button pButton size="small" outlined [disabled]="busy() || !visible().length" pTooltip="Analyze every job in the current list" (click)="analyzeAll()"><span class="material-symbols-rounded">auto_awesome</span>{{ analyzeProgress() || 'Analyze all' }}</button>
-            <p-selectbutton [options]="filterOptions()" [ngModel]="filter()" (ngModelChange)="filter.set($event); pageIndex.set(0)" optionLabel="label" optionValue="value" [allowEmpty]="false" aria-label="Filter jobs" />
+            aria-label="Filter jobs" />
+                        <p-select [options]="sortOptions" [ngModel]="sort()" (ngModelChange)="sort.set($event); pageIndex.set(0)" optionLabel="label" optionValue="value" appendTo="body" ariaLabel="Sort jobs" />
           </div>
         </div>
 
@@ -223,12 +225,17 @@ export class JobsComponent {
   ]);
   readonly pageIndex = signal(0);
   readonly pageSize = signal(25);
+  readonly sort = signal<'NEWEST' | 'SCORE'>('NEWEST');
+  readonly sortOptions = [{ label: 'Newest first', value: 'NEWEST' }, { label: 'Highest match score', value: 'SCORE' }];
   readonly visible = computed(() => {
     const q = this.query().trim().toLowerCase();
     const f = this.filter();
+    const s = this.sort();
+    const newest = (a: Job, b: Job) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     return this.jobs().filter(j =>
       (f === 'ALL' ? j.status !== 'DISMISSED' : f === 'QUALIFIED' ? j.status === 'QUALIFIED' : j.status === f) &&
-      (!q || j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q)));
+      (!q || j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q)))
+      .sort((a, b) => s === 'SCORE' ? ((b.match?.score ?? -1) - (a.match?.score ?? -1)) || newest(a, b) : newest(a, b));
   });
   readonly paged = computed(() => {
     const start = this.pageIndex() * this.pageSize();
