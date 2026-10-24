@@ -125,6 +125,7 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
           </div>
           <div class="row">
             <span class="muted small">{{ visible().length }} result{{ visible().length === 1 ? '' : 's' }}</span>
+            <button pButton size="small" outlined [disabled]="busy() || !visible().length" pTooltip="Analyze every job in the current list" (click)="analyzeAll()"><span class="material-symbols-rounded">auto_awesome</span>{{ analyzeProgress() || 'Analyze all' }}</button>
             <p-selectbutton [options]="filterOptions()" [ngModel]="filter()" (ngModelChange)="filter.set($event); pageIndex.set(0)" optionLabel="label" optionValue="value" [allowEmpty]="false" aria-label="Filter jobs" />
           </div>
         </div>
@@ -206,6 +207,7 @@ export class JobsComponent {
   readonly error = signal('');
   readonly busy = signal(false);
   readonly loaded = signal(false);
+  readonly analyzeProgress = signal('');
   readonly warnings = signal<string[]>([]);
   readonly discoveryNotes = signal<string[]>([]);
   readonly discoverySummary = signal('');
@@ -334,6 +336,20 @@ export class JobsComponent {
   }
 
   analyze(j: Job): Promise<void> { return this.run(async () => { await this.api.analyzeJob(j.id); this.notify.success(`Analyzed ${j.title}.`); }); }
+  analyzeAll(): Promise<void> {
+    const list = this.visible();
+    return this.run(async () => {
+      let failed = 0;
+      try {
+        for (let i = 0; i < list.length; i++) {
+          this.analyzeProgress.set(`Analyzing ${i + 1}/${list.length}`);
+          try { await this.api.analyzeJob(list[i].id); } catch { failed++; }
+        }
+      } finally { this.analyzeProgress.set(''); }
+      if (failed) this.notify.error(`Analyzed ${list.length - failed} job(s); ${failed} failed.`);
+      else this.notify.success(`Analyzed ${list.length} job(s).`);
+    });
+  }
   apply(j: Job): Promise<void> {
     return this.run(async () => {
       if (!j.analysis) await this.api.analyzeJob(j.id);
