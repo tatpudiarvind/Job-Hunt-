@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { SelectButtonModule } from 'primeng/selectbutton';
+import { SelectModule } from 'primeng/select';
 import { AccordionModule } from 'primeng/accordion';
 import { PaginatorModule, PaginatorState } from 'primeng/paginator';
 import { ApiService } from '../../core/api.service';
@@ -23,7 +24,7 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
 @Component({
   selector: 'app-jobs',
   standalone: true,
-  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, SelectButtonModule, AccordionModule, PaginatorModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
+  imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, SelectButtonModule, SelectModule, AccordionModule, PaginatorModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
   templateUrl: './jobs.component.html',
   styleUrl: './jobs.component.scss'
 })
@@ -34,6 +35,7 @@ export class JobsComponent {
   readonly error = signal('');
   readonly busy = signal(false);
   readonly loaded = signal(false);
+  readonly analyzeProgress = signal('');
   readonly warnings = signal<string[]>([]);
   readonly discoveryNotes = signal<string[]>([]);
   readonly discoverySummary = signal('');
@@ -49,12 +51,17 @@ export class JobsComponent {
   ]);
   readonly pageIndex = signal(0);
   readonly pageSize = signal(25);
+  readonly sort = signal<'NEWEST' | 'SCORE'>('NEWEST');
+  readonly sortOptions = [{ label: 'Newest first', value: 'NEWEST' }, { label: 'Highest match score', value: 'SCORE' }];
   readonly visible = computed(() => {
     const q = this.query().trim().toLowerCase();
     const f = this.filter();
+    const s = this.sort();
+    const newest = (a: Job, b: Job) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     return this.jobs().filter(j =>
       (f === 'ALL' ? j.status !== 'DISMISSED' : f === 'QUALIFIED' ? j.status === 'QUALIFIED' : j.status === f) &&
-      (!q || j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q)));
+      (!q || j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q)))
+      .sort((a, b) => s === 'SCORE' ? ((b.match?.score ?? -1) - (a.match?.score ?? -1)) || newest(a, b) : newest(a, b));
   });
   readonly paged = computed(() => {
     const start = this.pageIndex() * this.pageSize();
@@ -162,6 +169,20 @@ export class JobsComponent {
   }
 
   analyze(j: Job): Promise<void> { return this.run(async () => { await this.api.analyzeJob(j.id); this.notify.success(`Analyzed ${j.title}.`); }); }
+  analyzeAll(): Promise<void> {
+    const list = this.visible();
+    return this.run(async () => {
+      let failed = 0;
+      try {
+        for (let i = 0; i < list.length; i++) {
+          this.analyzeProgress.set(`Analyzing ${i + 1}/${list.length}`);
+          try { await this.api.analyzeJob(list[i].id); } catch { failed++; }
+        }
+      } finally { this.analyzeProgress.set(''); }
+      if (failed) this.notify.error(`Analyzed ${list.length - failed} job(s); ${failed} failed.`);
+      else this.notify.success(`Analyzed ${list.length} job(s).`);
+    });
+  }
   apply(j: Job): Promise<void> {
     return this.run(async () => {
       if (!j.analysis) await this.api.analyzeJob(j.id);

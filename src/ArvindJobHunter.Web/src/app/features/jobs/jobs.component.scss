@@ -2,7 +2,11 @@
 .import { align-items: center; margin-bottom: 1rem; }
 .form { display: grid; gap: .5rem 1rem; grid-template-columns: 1fr 1fr; }
 .form .span { grid-column: 1 / -1; }
-.toolbar { margin-bottom: 1rem; gap: 1rem; }
+.toolbar { margin-bottom: .75rem; gap: .75rem; flex-wrap: wrap; }
+.toolbar.sub { margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid #e5e7eb; }
+.toolbar-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.toolbar .sort { width: 13rem; }
+@media (max-width: 640px) { .toolbar .search-box { max-width: none; flex-basis: 100%; } .toolbar .sort { flex: 1; } }
 .job { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1rem 1.25rem; align-items: center; }
 .job.dismissed { opacity: .65; }
 .job .body { display: grid; gap: .45rem; min-width: 0; }
