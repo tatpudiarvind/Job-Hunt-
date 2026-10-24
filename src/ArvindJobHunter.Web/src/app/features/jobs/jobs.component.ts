@@ -124,12 +124,14 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
             <span class="material-symbols-rounded">search</span>
             <input pInputText aria-label="Search jobs" placeholder="Search title or company" [ngModel]="query()" (ngModelChange)="query.set($event); pageIndex.set(0)" />
           </div>
-          <div class="row">
-            <span class="muted small">{{ visible().length }} result{{ visible().length === 1 ? '' : 's' }}</span>
-            <button pButton size="small" outlined [disabled]="busy() || !visible().length" pTooltip="Analyze every job in the current list" (click)="analyzeAll()"><span class="material-symbols-rounded">auto_awesome</span>{{ analyzeProgress() || 'Analyze all' }}</button>
-            aria-label="Filter jobs" />
-                        <p-select [options]="sortOptions" [ngModel]="sort()" (ngModelChange)="sort.set($event); pageIndex.set(0)" optionLabel="label" optionValue="value" appendTo="body" ariaLabel="Sort jobs" />
+          <div class="toolbar-actions">
+            <p-select class="sort" [options]="sortOptions" [ngModel]="sort()" (ngModelChange)="sort.set($event); pageIndex.set(0)" optionLabel="label" optionValue="value" appendTo="body" ariaLabel="Sort jobs" />
+            <button pButton outlined [disabled]="busy() || !visible().length" pTooltip="Analyze every job in the current list" tooltipPosition="bottom" (click)="analyzeAll()"><span class="material-symbols-rounded">auto_awesome</span>{{ analyzeProgress() || 'Analyze all' }}</button>
           </div>
+        </div>
+        <div class="row between toolbar sub">
+          <p-selectbutton [options]="filterOptions()" [ngModel]="filter()" (ngModelChange)="filter.set($event); pageIndex.set(0)" optionLabel="label" optionValue="value" [allowEmpty]="false" aria-label="Filter jobs" />
+          <span class="muted small">{{ visible().length }} result{{ visible().length === 1 ? '' : 's' }}</span>
         </div>
 
 		<div class="list">
@@ -185,7 +187,11 @@ type Filter = 'ALL' | 'QUALIFIED' | 'DISCOVERED' | 'DISMISSED';
     .import { align-items: center; margin-bottom: 1rem; }
     .form { display: grid; gap: .5rem 1rem; grid-template-columns: 1fr 1fr; }
     .form .span { grid-column: 1 / -1; }
-    .toolbar { margin-bottom: 1rem; gap: 1rem; }
+    .toolbar { margin-bottom: .75rem; gap: .75rem; flex-wrap: wrap; }
+    .toolbar.sub { margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid #e5e7eb; }
+    .toolbar-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .toolbar .sort { width: 13rem; }
+    @media (max-width: 640px) { .toolbar .search-box { max-width: none; flex-basis: 100%; } .toolbar .sort { flex: 1; } }
     .job { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1rem 1.25rem; align-items: center; }
     .job.dismissed { opacity: .65; }
     .job .body { display: grid; gap: .45rem; min-width: 0; }
