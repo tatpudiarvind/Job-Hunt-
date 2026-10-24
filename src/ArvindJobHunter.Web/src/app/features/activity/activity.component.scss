@@ -1,0 +1,9 @@
+.title { display: flex; gap: .6rem; align-items: center; min-width: 0; }
+.name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desc { justify-content: flex-end; gap: .4rem; align-items: center; }
+:host ::ng-deep .calls { width: 100%; }
+.ok { color: var(--ajh-success); } .bad { color: var(--ajh-danger); }
+.audit { display: grid; grid-template-columns: 150px 1fr; gap: 1rem; }
+.what { display: grid; gap: .25rem; min-width: 0; }
+.mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) { .audit { grid-template-columns: 1fr; gap: .25rem; } }

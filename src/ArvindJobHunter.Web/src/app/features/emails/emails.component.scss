@@ -1,0 +1,5 @@
+.title { display: flex; gap: .6rem; align-items: center; min-width: 0; }
+.subject { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desc { justify-content: flex-end; gap: .4rem; align-items: center; }
+.danger { color: var(--ajh-danger); }
+form { padding-top: .5rem; }

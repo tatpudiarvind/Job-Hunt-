@@ -1,0 +1,18 @@
+.back { justify-self: start; }
+.hero { display: flex; justify-content: space-between; gap: 1.5rem; align-items: center; }
+.identity { display: grid; gap: .5rem; }
+.identity h1 { font-size: 1.5rem; }
+.score-card { display: grid; justify-items: center; padding: .75rem 1.25rem; border-radius: 12px; background: var(--ajh-success-soft); color: var(--ajh-success); flex: none; }
+.score-card.low { background: var(--ajh-warn-soft); color: var(--ajh-warn); }
+.score-card b { font-size: 2rem; line-height: 1; }
+.score-card span { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; }
+.actions { align-items: center; }
+.recipient { width: min(100%, 280px); }
+.country { width: 220px; }
+h4 { font-size: .85rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ajh-muted); margin-bottom: .4rem; }
+.list { margin: 0; padding-left: 1.2rem; display: grid; gap: .35rem; line-height: 1.5; }
+.diff { display: grid; gap: 1rem; grid-template-columns: 1fr 1fr; }
+.diff .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; color: var(--ajh-muted); }
+.diff .before p { color: var(--ajh-muted); text-decoration: line-through; text-decoration-color: rgba(192,57,43,.4); }
+.diff .after p { background: var(--ajh-success-soft); border-radius: 8px; padding: .5rem .75rem; }
+@media (max-width: 720px) { .hero { flex-direction: column; align-items: flex-start; } .diff { grid-template-columns: 1fr; } }

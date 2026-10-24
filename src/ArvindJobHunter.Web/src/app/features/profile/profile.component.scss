@@ -1,0 +1,8 @@
+.layout { display: grid; gap: 1.5rem; grid-template-columns: minmax(300px, 380px) 1fr; align-items: start; }
+.toolbar { margin-bottom: .75rem; }
+.no-mb { margin-bottom: 0; }
+.fact { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.fact .main { display: grid; gap: .3rem; min-width: 0; }
+.fact .side { flex: none; }
+@media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .fact { flex-direction: column; } }

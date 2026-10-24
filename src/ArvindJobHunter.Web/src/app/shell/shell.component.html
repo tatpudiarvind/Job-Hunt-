@@ -1,0 +1,66 @@
+<ng-template #navContent>
+    <div class="brand">
+      <div class="logo"><span class="material-symbols-rounded">work</span></div>
+      <div>
+        <b>Job Hunter</b>
+        <span class="muted small">Approval-first · local</span>
+      </div>
+    </div>
+    <nav class="nav-list">
+      @for (item of primary; track item.path) {
+        <a class="nav-item" [routerLink]="item.path" routerLinkActive="active" (click)="navOpen.set(false)">
+          <span class="material-symbols-rounded">{{ item.icon }}</span>
+          <span>{{ item.label }}</span>
+        </a>
+      }
+      <p-divider styleClass="divider" />
+      @for (item of secondary; track item.path) {
+        <a class="nav-item" [routerLink]="item.path" routerLinkActive="active" (click)="navOpen.set(false)">
+          <span class="material-symbols-rounded">{{ item.icon }}</span>
+          <span>{{ item.label }}</span>
+        </a>
+      }
+    </nav>
+    <div class="sidenav-footer muted small">
+      <span class="material-symbols-rounded">verified_user</span>
+      Nothing leaves this machine without your approval.
+    </div>
+</ng-template>
+
+<div class="container" [class.handset]="isHandset()">
+  @if (isHandset()) {
+    <p-drawer [(visible)]="navOpen" [showCloseIcon]="false" styleClass="nav-drawer" ariaLabel="Navigation">
+      <div class="sidenav"><ng-container [ngTemplateOutlet]="navContent" /></div>
+    </p-drawer>
+  } @else {
+    <aside class="sidenav"><ng-container [ngTemplateOutlet]="navContent" /></aside>
+  }
+
+  <div class="content">
+    <header class="toolbar">
+      @if (isHandset()) {
+        <p-button [text]="true" [rounded]="true" severity="secondary" ariaLabel="Toggle navigation" (onClick)="navOpen.set(!navOpen())">
+          <span class="material-symbols-rounded">menu</span>
+        </p-button>
+      }
+      <span class="grow"></span>
+      @if (settings(); as s) {
+        <a routerLink="/settings" class="mode" pTooltip="Execution mode and AI provider. Change in Settings." tooltipPosition="bottom">
+          <app-status-chip [status]="s.mode" />
+          <span class="chip">AI · {{ s.llmDisplayName }}</span>
+        </a>
+      }
+      <p-button [text]="true" [rounded]="true" severity="secondary" ariaLabel="Account" (onClick)="menu.toggle($event)">
+        <span class="material-symbols-rounded">account_circle</span>
+      </p-button>
+      <p-menu #menu [model]="accountMenu" [popup]="true" appendTo="body">
+        <ng-template #item let-item>
+          <a class="p-menu-item-link menu-link" [routerLink]="item.routerLink">
+            <span class="material-symbols-rounded">{{ item.icon }}</span>{{ item.label }}
+          </a>
+        </ng-template>
+      </p-menu>
+    </header>
+    <main class="main"><router-outlet /></main>
+  </div>
+</div>

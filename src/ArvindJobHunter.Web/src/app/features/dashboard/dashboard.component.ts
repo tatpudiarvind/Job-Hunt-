@@ -13,85 +13,8 @@ import { ButtonModule } from 'primeng/button';
   selector: 'app-dashboard',
   standalone: true,
   imports: [ButtonModule, RouterLink, DatePipe, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
-  template: `
-    <div class="page">
-      <app-page-header eyebrow="Overview" title="Where things stand" icon="space_dashboard" subtitle="A snapshot of your pipeline and what needs your attention.">
-        <a pButton routerLink="/jobs"><span class="material-symbols-rounded">add</span>Add a job</a>
-      </app-page-header>
-
-      @if (error()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ error() }}</span></div> }
-      @if (settings() && !settings()!.masterResumeExists) {
-        No master resume on file yet. Upload your .docx or .pdf so the assistant can tailor it per job.
-      }
-
-      @if (dashboard(); as d) {
-        <div class="grid-3 metrics">
-          <div class="metric"><b>{{ d.jobs }}</b><span>Jobs tracked</span></div>
-          <div class="metric"><b>{{ d.qualifiedJobs }}</b><span>Qualified matches</span></div>
-          <div class="metric"><b>{{ d.applications }}</b><span>Applications</span></div>
-          <div class="metric accent"><b>{{ d.pendingApprovals }}</b><span>Awaiting your approval</span></div>
-          <div class="metric"><b>{{ d.agentRuns }}</b><span>Agent runs</span></div>
-          <div class="metric"><b>{{ d.externalActions }}</b><span>External actions executed</span></div>
-        </div>
-
-        <div class="grid-2">
-          <section class="card">
-            <div class="card-title"><span class="material-symbols-rounded">fact_check</span>Pending approvals</div>
-            @for (a of pending(); track a.id) {
-              <div class="item">
-                <div class="row between"><app-status-chip [status]="a.actionType" /><span class="muted small">expires {{ a.expiresAt | date:'medium' }}</span></div>
-                <span>{{ a.summary }}</span>
-              </div>
-            } @empty { <div class="empty"><span class="material-symbols-rounded">task_alt</span>Nothing waiting on you.</div> }
-            <div class="row end mt"><a pButton text routerLink="/approvals">Open approvals<span class="material-symbols-rounded">arrow_forward</span></a></div>
-          </section>
-
-          <section class="card">
-            <div class="card-title"><span class="material-symbols-rounded">star</span>Top matches</div>
-            @for (j of topJobs(); track j.id) {
-              <div class="item">
-                <div class="row between">
-                  <a class="title" [routerLink]="['/jobs', j.id]">{{ j.title }}</a>
-                  <span class="score" [class.low]="(j.match?.score ?? 0) < 60">{{ j.match?.score }}%</span>
-                </div>
-                <span class="muted small">{{ j.company }}@if (j.location) { · {{ j.location }}}</span>
-              </div>
-            } @empty { <div class="empty"><span class="material-symbols-rounded">query_stats</span>No analyzed jobs yet. <a routerLink="/jobs">Add one</a>.</div> }
-          </section>
-
-          <section class="card">
-            <div class="card-title"><span class="material-symbols-rounded">notifications_active</span>Follow-ups due</div>
-            @for (f of dueFollowUps(); track f.id) {
-              <div class="item">
-                <div class="row between"><a class="title" [routerLink]="['/jobs', f.jobId]">{{ jobTitle(f.jobId) }}</a><app-status-chip [status]="f.status" /></div>
-                <div class="row between">
-                  <span class="muted small">due {{ f.followUpDueAt | date:'short' }}@if (f.followUpNote) { · {{ f.followUpNote }}}</span>
-<button pButton text [disabled]="drafting() === f.id" (click)="draftFollowUp(f)">Draft email</button>
-                </div>
-                @if (drafted() === f.id) { <span class="small">Draft created. <a routerLink="/emails">Review and approve it</a>.</span> }
-              </div>
-            } @empty { <div class="empty"><span class="material-symbols-rounded">notifications_off</span>No follow-ups due.</div> }
-            <div class="row end mt"><a pButton text routerLink="/applications">Manage applications<span class="material-symbols-rounded">arrow_forward</span></a></div>
-          </section>
-
-          <section class="card">
-            <div class="card-title"><span class="material-symbols-rounded">route</span>How it works</div>
-            <ol class="steps">
-              <li><b>Add a job</b> by pasting a description or importing from a URL.</li>
-              <li><b>Analyze &amp; match</b> against your verified skills.</li>
-              <li><b>Prepare</b> a tailored resume and cover letter — proposed, not applied.</li>
-              <li><b>Approve &amp; execute</b> each external action yourself.</li>
-            </ol>
-          </section>
-        </div>
-      } @else if (!error()) { <app-loading-skeleton variant="dashboard" label="Loading dashboard" /> }
-    </div>
-  `,
-  styles: [`
-    .metrics { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
-    .steps { margin: 0; padding-left: 1.2rem; display: grid; gap: .6rem; line-height: 1.5; color: var(--ajh-muted); }
-    .steps b { color: var(--ajh-text); }
-  `]
+  templateUrl: './dashboard.component.html',
+  styleUrl: './dashboard.component.scss'
 })
 export class DashboardComponent {
   private readonly api = inject(ApiService);

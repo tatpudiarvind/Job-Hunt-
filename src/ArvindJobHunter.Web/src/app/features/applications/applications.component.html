@@ -1,0 +1,129 @@
+<div class="page">
+  <app-page-header eyebrow="Tracking" title="Applications" icon="assignment_turned_in" subtitle="Move applications through your pipeline and schedule follow-up reminders. Status changes are local bookkeeping — they never trigger external actions.">
+    <button pButton outlined (click)="load()" [disabled]="busy()"><span class="material-symbols-rounded">refresh</span>Refresh</button>
+  </app-page-header>
+
+  @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
+  @if (error()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ error() }}</span></div> }
+
+  @if (due().length) {
+    <div class="alert warn"><span class="material-symbols-rounded">notifications_active</span><span>{{ due().length }} follow-up{{ due().length === 1 ? '' : 's' }} due now.</span></div>
+  }
+
+  <p-accordion [multiple]="true">
+    @for (app of applications(); track app.id) {
+      <p-accordion-panel [value]="app.id">
+        <p-accordion-header>
+          <span class="panel-title title">
+            <span class="job">{{ jobTitle(app.jobId) }}</span>
+            <app-status-chip [status]="app.status" />
+          </span>
+          <span class="panel-desc desc">
+            @if (app.followUpDueAt) {
+              <span class="row small" [class.overdue]="isDue(app)"><span class="material-symbols-rounded">alarm</span>{{ app.followUpDueAt | date:'MMM d, HH:mm' }}</span>
+            }
+            <span class="muted small">updated {{ app.updatedAt | date:'mediumDate' }}</span>
+          </span>
+        </p-accordion-header><p-accordion-content>
+
+        <div class="body">
+          <div class="grid-2">
+            <div class="stack">
+              <h4>Status</h4>
+              <div class="row">
+                <div class="field">
+                  <label class="field-label" [for]="'move-' + app.id">Move to</label>
+                  <p-select [inputId]="'move-' + app.id" [ngModel]="nextStatus[app.id] ?? ''" (ngModelChange)="nextStatus[app.id] = $event" [options]="statusOptions(app.status)" optionLabel="label" optionValue="value" placeholder="Choose status" appendTo="body" />
+                </div>
+                <button pButton [disabled]="busy() || !nextStatus[app.id]" (click)="transition(app)">Update</button>
+              </div>
+              <div class="row wrap">
+                <a pButton text [routerLink]="['/jobs', app.jobId]">Open job<span class="material-symbols-rounded">arrow_forward</span></a>
+                @if (app.resumeVersionId) {
+                  <button pButton outlined type="button" [disabled]="busy()" (click)="previewResume(app.resumeVersionId)"><span class="material-symbols-rounded">preview</span>Preview resume</button>
+                }
+              </div>
+            </div>
+            <div class="stack">
+              <h4>Follow-up reminder</h4>
+              <div class="field">
+                <label class="field-label" for="f-field0">Due</label>
+                <input id="f-field0" pInputText type="datetime-local" [ngModel]="followUpAt[app.id] ?? ''" (ngModelChange)="followUpAt[app.id] = $event" />
+              </div>
+              <div class="field">
+                <label class="field-label" for="f-field1">Note</label>
+                <input id="f-field1" pInputText [ngModel]="followUpNote[app.id] ?? ''" (ngModelChange)="followUpNote[app.id] = $event" placeholder="e.g. Nudge recruiter about next steps" />
+              </div>
+              <div class="row">
+                <button pButton outlined [disabled]="busy() || !followUpAt[app.id]" (click)="schedule(app)"><span class="material-symbols-rounded">alarm_add</span>Schedule</button>
+                <button pButton text [disabled]="busy()" (click)="quickFollowUp(app)">+7 days</button>
+                <button pButton text [disabled]="busy()" (click)="draftFollowUp(app)" pTooltip="Creates a draft on the Emails page; sending still needs approval">Draft email</button>
+                @if (app.followUpDueAt) { <button pButton text [disabled]="busy()" (click)="clearFollowUp(app)">Clear</button> }
+              </div>
+              @if (app.followUpNote) { <span class="muted small">Current note: {{ app.followUpNote }}</span> }
+            </div>
+          </div>
+          <h4 class="mt">Review package</h4>
+          <div class="stack">
+            @if (reviews[app.id]; as r) {
+              @if (r.job.sponsorship; as s) {
+                <span class="small">Sponsorship: <strong>{{ s.status }}</strong>@if (s.matchedPhrase) { ("{{ s.matchedPhrase }}") } · source {{ s.source }} · checked {{ s.checkedAt | date:'mediumDate' }}</span>
+              } @else { <span class="small muted">Sponsorship: UNKNOWN (not checked)</span> }
+              @if (r.job.recruiter; as c) {
+                <span class="small">Recruiter: <strong>{{ c.status }}</strong>@if (c.email) { · {{ c.email }} } @if (c.source) { · from {{ c.source }} }</span>
+              } @else { <span class="small muted">Recruiter contact: not recorded</span> }
+              @for (issue of r.issues; track issue) { <span class="small overdue">⚠ {{ issue }}</span> }
+              @if (r.latestPackage; as p) {
+                <span class="small">Package v{{ p.version }} · {{ p.packageHash.slice(0, 12) }} · {{ r.packageIsCurrent ? 'current' : 'out of date — content changed' }}</span>
+              } @else { <span class="small muted">No package frozen yet.</span> }
+              <div class="row">
+                <button pButton [disabled]="busy() || r.issues.length > 0 || r.packageIsCurrent" (click)="freeze(app)"><span class="material-symbols-rounded">inventory_2</span>Freeze package</button>
+              </div>
+            } @else {
+              <button pButton outlined [disabled]="busy()" (click)="review(app)"><span class="material-symbols-rounded">fact_check</span>Review before submitting</button>
+            }
+          </div>
+          <h4 class="mt">Browser apply</h4>
+          <div class="stack">
+            <span class="small muted">Opens a visible browser, fills the form and stops before Submit. Final submit only runs after you approve it on the Approvals page.</span>
+            @for (s of submissionsFor(app); track s.id) {
+              <div class="card stack">
+                <div class="row wrap"><app-status-chip [status]="s.status" /><span class="small">{{ s.adapter }} · {{ s.updatedAt | date:'medium' }}</span>
+                  @if (s.screenshotPath) { <button pButton text (click)="screenshot(s.id)"><span class="material-symbols-rounded">image</span>Screenshot</button> }
+                </div>
+                <span class="small">Resume: {{ s.resumeFilePath }}</span>
+                @for (f of s.fields; track f.label) { <span class="small">{{ f.label }}: <strong>{{ f.value || '—' }}</strong> <span class="muted">({{ f.source }})</span></span> }
+                @if (s.confirmationText) { <span class="small">{{ s.confirmationText }}</span> }
+                @if (s.unansweredFields.length && s.status !== 'SUBMITTED') {
+                  @for (q of s.unansweredFields; track q) {
+                    <div class="field"><label class="field-label" for="f-field2">{{ q }}</label>
+                      <input id="f-field2" pInputText [ngModel]="answerDraft(s.id)[q] ?? ''" (ngModelChange)="answerDraft(s.id)[q] = $event" />
+                    </div>
+                  }
+                  <div class="row"><button pButton [disabled]="busy()" (click)="answer(s.id)">Save answers</button></div>
+                }
+                @if (s.status === 'AWAITING_APPROVAL') { <a pButton text routerLink="/approvals">Review approval<span class="material-symbols-rounded">arrow_forward</span></a> }
+              </div>
+            }
+            <div class="row"><button pButton outlined [disabled]="busy()" (click)="prepare(app)"><span class="material-symbols-rounded">open_in_browser</span>Fill application in browser</button></div>
+          </div>
+          <h4 class="mt">History</h4>
+          <div class="timeline">
+            @for (h of app.history; track h.at) {
+              <div class="tl-item">
+                <span class="dot"></span>
+                <div><div class="row"><app-status-chip [status]="h.to" /><span class="muted small">{{ h.at | date:'medium' }}</span></div><span class="small">{{ h.reason }}</span></div>
+              </div>
+            }
+          </div>
+        </div>
+      </p-accordion-content></p-accordion-panel>
+    } @empty {
+      @if (!loaded()) {
+        <app-loading-skeleton variant="list" [rows]="4" label="Loading applications" />
+      } @else {
+      <div class="card empty"><span class="material-symbols-rounded">assignment</span>No applications yet. Prepare an application from a job to start tracking it.</div>
+      }
+    }
+  </p-accordion>
+</div>

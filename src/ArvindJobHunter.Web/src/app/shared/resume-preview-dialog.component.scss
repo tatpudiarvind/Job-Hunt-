@@ -1,0 +1,6 @@
+.summary { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; padding: .25rem .65rem; border-radius: 999px; background: var(--ajh-surface-variant); font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.preview { max-height: min(70vh, 720px); overflow: auto; border: 1px solid var(--ajh-border); border-radius: 12px; padding: 1rem; background: var(--ajh-surface); }
+.para { margin: 0 0 .75rem; white-space: pre-wrap; line-height: 1.6; }
+.para.style-heading { font-weight: 600; }
+.issues { margin: .25rem 0 0; padding-left: 1.1rem; }

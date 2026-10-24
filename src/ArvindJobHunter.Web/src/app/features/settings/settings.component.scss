@@ -1,0 +1,23 @@
+.modes { display: grid; gap: .5rem; }
+.mode { display: flex; gap: .5rem; align-items: flex-start; padding: .75rem .9rem .75rem .5rem; border: 1px solid var(--ajh-border); border-radius: 10px; cursor: pointer; transition: border-color .15s, background .15s; }
+.mode:hover { background: #f7f9fc; }
+.mode.selected { border-color: var(--ajh-primary); background: var(--ajh-primary-soft); }
+.mode > div { display: grid; gap: .2rem; padding-top: .55rem; }
+.card-title.between { justify-content: space-between; }
+.gap-sm { gap: .35rem; }
+.mt-xs { margin-top: .35rem; }
+.ok { color: var(--ajh-success); }
+.restore { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+.help-card { margin-top: .5rem; }
+.alert.compact { padding: .7rem .85rem; }
+.resume-status { display: flex; gap: .75rem; align-items: center; padding: .75rem 1rem; border-radius: 10px; }
+.resume-status.ok { background: var(--ajh-success-soft); color: var(--ajh-success); }
+.resume-status.missing { background: var(--ajh-warn-soft); color: var(--ajh-warn); }
+.resume-status > div { display: grid; gap: .15rem; min-width: 0; }
+.resume-status b { color: var(--ajh-text); }
+.resume-status .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dropzone { display: grid; justify-items: center; gap: .3rem; padding: 1.75rem 1rem; border: 2px dashed var(--ajh-border); border-radius: 12px; cursor: pointer; text-align: center; transition: border-color .15s, background .15s; }
+.dropzone:hover, .dropzone.drag { border-color: var(--ajh-primary); background: var(--ajh-primary-soft); }
+.dropzone .material-symbols-rounded { font-size: 2rem; width: 2rem; height: 2rem; color: var(--ajh-primary); }
+.advanced { box-shadow: none; border: 1px solid var(--ajh-border); border-radius: 10px !important; }
+.kw { padding: .4rem .6rem; border: 1px solid var(--ajh-border); border-radius: 8px; min-width: 14rem; background: transparent; color: inherit; }

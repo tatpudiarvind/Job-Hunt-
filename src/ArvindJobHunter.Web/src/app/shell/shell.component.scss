@@ -1,0 +1,25 @@
+.container { height: 100vh; display: grid; grid-template-columns: 248px 1fr; }
+.container.handset { grid-template-columns: 1fr; }
+.sidenav { width: 248px; height: 100%; border-right: 1px solid var(--ajh-border); background: var(--ajh-surface); display: flex; flex-direction: column; overflow-y: auto; }
+.content { overflow-y: auto; height: 100vh; }
+.brand { display: flex; align-items: center; gap: .75rem; padding: 1.25rem 1.25rem 1rem; }
+.brand b { display: block; font-size: 1rem; }
+.brand span { display: block; }
+.logo { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #1f5fbf, #3b82f6); display: grid; place-items: center; color: #fff; }
+.nav-list { padding: 0 .75rem; flex: 1; display: grid; align-content: start; gap: 2px; }
+:host ::ng-deep .divider { margin: .75rem 0; }
+.nav-item { display: flex; align-items: center; gap: 1rem; height: 48px; padding: 0 1rem; border-radius: 10px; color: var(--ajh-text); text-decoration: none; font-weight: 500; }
+.nav-item:hover { background: #f1f4f8; text-decoration: none; }
+.nav-item .material-symbols-rounded { color: var(--ajh-muted); }
+.nav-item.active { background: var(--ajh-primary-soft); color: var(--ajh-primary); }
+.nav-item.active .material-symbols-rounded { color: var(--ajh-primary); font-variation-settings: 'FILL' 1; }
+.sidenav-footer { display: flex; gap: .5rem; align-items: flex-start; padding: 1rem 1.25rem 1.25rem; border-top: 1px solid var(--ajh-border); line-height: 1.4; }
+.sidenav-footer .material-symbols-rounded { font-size: 1.1rem; color: var(--ajh-success); flex: none; }
+.toolbar { height: 64px; padding: 0 16px; display: flex; align-items: center; background: rgba(244,246,249,.85); backdrop-filter: blur(8px); border-bottom: 1px solid var(--ajh-border); position: sticky; top: 0; z-index: 2; gap: .5rem; }
+.mode { display: inline-flex; gap: .35rem; align-items: center; text-decoration: none; }
+.menu-link { display: flex; align-items: center; gap: .75rem; color: inherit; text-decoration: none; }
+.main { padding: 1.75rem 2rem 3rem; }
+:host ::ng-deep .nav-drawer { width: 248px !important; }
+:host ::ng-deep .nav-drawer .p-drawer-content { padding: 0; }
+:host ::ng-deep .nav-drawer .p-drawer-header { display: none; }
+@media (max-width: 720px) { .main { padding: 1.25rem 1rem 2rem; } }

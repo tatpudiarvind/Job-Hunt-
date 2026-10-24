@@ -1,0 +1,140 @@
+<div class="page">
+  <app-page-header eyebrow="Support" title="Help Center" icon="help" subtitle="Browse formal product documentation or ask questions against the documented guidance." />
+
+  <section class="card stack">
+    <div class="row gap-sm wrap">
+      <button pButton [severity]="view() === 'docs' ? 'primary' : 'secondary'" type="button" (click)="view.set('docs')">
+        <span class="material-symbols-rounded">menu_book</span>Docs center
+      </button>
+      <button pButton [severity]="view() === 'chat' ? 'primary' : 'secondary'" type="button" (click)="view.set('chat')">
+        <span class="material-symbols-rounded">chat</span>Docs chat
+      </button>
+    </div>
+  </section>
+
+  @if (view() === 'docs') {
+    <section class="card stack mt">
+      <div class="card-title"><span class="material-symbols-rounded">library_books</span>Documentation Center</div>
+      <div class="field">
+        <label class="field-label" for="f-query">Search documents</label>
+        <input id="f-query" pInputText [(ngModel)]="query" placeholder="Search by topic, keyword, or problem" />
+      </div>
+      <div class="row gap-sm wrap">
+        <button pButton outlined type="button" [severity]="selectedCategory() === 'All' ? 'primary' : 'secondary'" (click)="selectedCategory.set('All')">All</button>
+        @for (category of categories; track category.key) {
+          <button pButton outlined type="button" [severity]="selectedCategory() === category.key ? 'primary' : 'secondary'" (click)="selectedCategory.set(category.key)">{{ category.title }}</button>
+        }
+      </div>
+
+      @if (selectedArticle(); as article) {
+        <section class="article-detail">
+          <div class="row between wrap gap-sm">
+            <div>
+              <div class="eyebrow">{{ article.category }}</div>
+              <h2>{{ article.title }}</h2>
+            </div>
+            <button pButton outlined type="button" (click)="selectedArticle.set(null)">
+              <span class="material-symbols-rounded">arrow_back</span>Back to results
+            </button>
+          </div>
+          <p class="muted">{{ article.summary }}</p>
+          <p>{{ article.answer }}</p>
+          <div class="refs small">
+            <b>References</b>
+            <ul>
+              @for (reference of article.references; track reference.path) {
+                <li><span class="mono">{{ reference.path }}</span> — {{ reference.title }}</li>
+              }
+            </ul>
+          </div>
+          @if (relatedArticles().length) {
+            <div class="stack">
+              <b>Related topics</b>
+              <div class="row gap-sm wrap">
+                @for (related of relatedArticles(); track related.id) {
+                  <button pButton outlined type="button" (click)="openArticle(related)">{{ related.title }}</button>
+                }
+              </div>
+            </div>
+          }
+        </section>
+      } @else {
+        <div class="grid-2 docs-grid">
+          @for (category of visibleCategories(); track category.key) {
+            <section class="doc-group">
+              <div class="group-header">
+                <div class="eyebrow">{{ category.title }}</div>
+                <p class="muted small">{{ category.description }}</p>
+              </div>
+              @for (article of articlesByCategory(category.key); track article.id) {
+                <article class="doc-card" (click)="openArticle(article)">
+                  <h3>{{ article.title }}</h3>
+                  <p class="muted">{{ article.summary }}</p>
+                  <div class="refs small">
+                    <b>References</b>
+                    <ul>
+                      @for (reference of article.references; track reference.path) {
+                        <li><span class="mono">{{ reference.path }}</span></li>
+                      }
+                    </ul>
+                  </div>
+                </article>
+              } @empty {
+                <div class="empty small">
+                  <span class="material-symbols-rounded">filter_alt_off</span>
+                  No documents match the current search and category filter.
+                </div>
+              }
+            </section>
+          }
+        </div>
+      }
+    </section>
+  } @else {
+    <section class="card stack mt">
+      <div class="card-title"><span class="material-symbols-rounded">question_answer</span>Ask the docs</div>
+      <div class="field">
+        <label class="field-label" for="f-chatInput">Your question</label>
+        <input id="f-chatInput" pInputText [(ngModel)]="chatInput" placeholder="Example: Why do I get redirect_uri_mismatch?" (keyup.enter)="askDocs()" />
+      </div>
+      <div class="row gap-sm wrap">
+        @for (suggestion of suggestions; track suggestion) {
+          <button pButton outlined type="button" (click)="useSuggestion(suggestion)">{{ suggestion }}</button>
+        }
+        <button pButton type="button" (click)="askDocs()" [disabled]="!chatInput().trim()">Ask</button>
+      </div>
+    </section>
+
+    <section class="card stack mt">
+      <div class="card-title"><span class="material-symbols-rounded">forum</span>Conversation</div>
+      @for (message of conversation(); track message.id) {
+        <article class="message" [class.user]="message.role === 'user'" [class.assistant]="message.role === 'assistant'">
+          <div class="message-meta">{{ message.role === 'user' ? 'You' : 'Docs assistant' }}</div>
+          <p class="message-text">{{ message.text }}</p>
+          @if (message.references?.length) {
+            <div class="refs small">
+              <b>References</b>
+              <ul>
+                @for (reference of message.references!; track reference.path) {
+                  <li><span class="mono">{{ reference.path }}</span> — {{ reference.title }}</li>
+                }
+              </ul>
+            </div>
+          }
+          @if (message.matchedArticleIds?.length) {
+            <div class="row gap-sm wrap">
+              @for (article of matchedArticles(message.matchedArticleIds!); track article.id) {
+                <button pButton outlined type="button" (click)="showFromChat(article)">{{ article.title }}</button>
+              }
+            </div>
+          }
+        </article>
+      } @empty {
+        <div class="empty">
+          <span class="material-symbols-rounded">chat</span>
+          Ask a question and the Help Center will answer using the structured project documentation.
+        </div>
+      }
+    </section>
+  }
+</div>

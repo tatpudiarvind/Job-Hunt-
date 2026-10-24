@@ -20,26 +20,8 @@ export interface ConfirmDialogData {
   selector: 'app-confirm-dialog',
   standalone: true,
   imports: [FormsModule, ButtonModule, InputTextModule, FloatLabelModule, AutoFocusModule],
-  template: `
-    <h2 class="dialog-title row">
-      <span class="material-symbols-rounded" [class.danger]="data.danger">{{ data.danger ? 'warning' : 'help' }}</span>
-      {{ data.title }}
-    </h2>
-    <div class="dialog-content">
-      <p class="pre">{{ data.message }}</p>
-      @if (data.promptLabel) {
-        <p-floatlabel variant="on" class="mt full">
-          <input pInputText id="confirm-prompt" class="full" [(ngModel)]="value" [pAutoFocus]="true" />
-          <label for="confirm-prompt">{{ data.promptLabel }}</label>
-        </p-floatlabel>
-      }
-    </div>
-    <div class="dialog-actions">
-      <p-button [text]="true" [label]="data.cancelLabel ?? 'Cancel'" (onClick)="ref.close(undefined)" />
-      <p-button [severity]="data.danger ? 'danger' : 'primary'" [label]="data.confirmLabel ?? 'Confirm'" (onClick)="ref.close(data.promptLabel ? value : true)" />
-    </div>
-  `,
-  styles: [`.danger { color: var(--ajh-danger); } h2 { gap: .5rem; }`]
+  templateUrl: './confirm-dialog.component.html',
+  styleUrl: './confirm-dialog.component.scss'
 })
 export class ConfirmDialogComponent {
   readonly data = inject<DynamicDialogConfig<ConfirmDialogData>>(DynamicDialogConfig).data!;

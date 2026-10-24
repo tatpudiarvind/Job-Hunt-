@@ -1,0 +1,8 @@
+<header class="header">
+  <div class="text">
+    @if (eyebrow()) { <p class="eyebrow">{{ eyebrow() }}</p> }
+    <h1 class="row"><span class="material-symbols-rounded">{{ icon() }}</span>{{ title() }}</h1>
+    @if (subtitle()) { <p class="muted">{{ subtitle() }}</p> }
+  </div>
+  <div class="actions"><ng-content /></div>
+</header>

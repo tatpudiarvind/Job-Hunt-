@@ -1,0 +1,10 @@
+.title { display: flex; gap: .75rem; align-items: center; min-width: 0; }
+.job { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desc { justify-content: flex-end; gap: 1rem; align-items: center; }
+.overdue { color: var(--ajh-danger); font-weight: 600; }
+.body { display: grid; gap: 1rem; padding-top: .5rem; }
+h4 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ajh-muted); }
+.timeline { display: grid; gap: .75rem; padding-left: .25rem; }
+.tl-item { display: flex; gap: .75rem; align-items: flex-start; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ajh-primary); margin-top: .45rem; flex: none; }
+.tl-item > div { display: grid; gap: .2rem; }

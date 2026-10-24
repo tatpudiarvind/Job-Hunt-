@@ -20,64 +20,8 @@ import { ProgressBarModule } from 'primeng/progressbar';
   selector: 'app-emails',
   standalone: true,
   imports: [ButtonModule, InputTextModule, TextareaModule, TooltipModule, ProgressBarModule, FormsModule, RouterLink, DatePipe, AccordionModule, PageHeaderComponent, StatusChipComponent, LoadingSkeletonComponent],
-  template: `
-    <div class="page">
-      <app-page-header eyebrow="Outreach" title="Email drafts" icon="mail" subtitle="Edit freely — editing resets any prior approval. Sending requires approval and explicit execution, and only happens in LIVE mode with Gmail connected." />
-
-      @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
-      @if (error()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ error() }}</span></div> }
-
-      <p-accordion [value]="drafts().length === 1 ? drafts()[0].id : undefined">
-        @for (e of drafts(); track e.id) {
-          <p-accordion-panel [value]="e.id">
-            <p-accordion-header>
-              <span class="panel-title title">
-                <span class="material-symbols-rounded muted">{{ e.kind === 'COVER_LETTER' ? 'article' : 'outgoing_mail' }}</span>
-                <span class="subject">{{ e.subject || '(no subject)' }}</span>
-              </span>
-              <span class="panel-desc desc">
-                <app-status-chip [status]="e.kind" />
-                <app-status-chip [status]="e.status" />
-                @if (e.approvalId) { <span class="chip warn">approval requested</span> }
-              </span>
-            </p-accordion-header><p-accordion-content>
-
-            <form class="stack" (ngSubmit)="save(e)">
-              <div class="grid-2">
-                <div class="field"><label class="field-label" for="f-to-e-id">To</label><input id="f-to-e-id" pInputText [(ngModel)]="e.to" name="to-{{ e.id }}" type="email" /></div>
-                <div class="field"><label class="field-label" for="f-subject-e-id">Subject</label><input id="f-subject-e-id" pInputText [(ngModel)]="e.subject" name="subject-{{ e.id }}" /></div>
-              </div>
-              <div class="field"><label class="field-label" for="f-body-e-id">Body</label><textarea id="f-body-e-id" pTextarea rows="12" [(ngModel)]="e.body" name="body-{{ e.id }}"></textarea></div>
-              <div class="row between">
-                <span class="muted small">Updated {{ e.updatedAt | date:'medium' }}@if (e.jobId) { · <a [routerLink]="['/jobs', e.jobId]">view job</a>}</span>
-                <div class="row">
-<button pButton text type="button" class="danger" [disabled]="busy()" (click)="remove(e)">Delete</button>
-@if (e.kind === 'COVER_LETTER') {
-  <button pButton outlined type="button" [disabled]="busy()" pTooltip="Creates an approval to write the letter as Word + PDF in your resume's style." (click)="requestDocument(e)"><span class="material-symbols-rounded">description</span>Generate document</button>
-}
-<button pButton outlined type="submit" [disabled]="busy()"><span class="material-symbols-rounded">save</span>Save</button>
-<button pButton type="button" [disabled]="busy()" pTooltip="Saves, then creates an approval request. Nothing is sent until you execute it under Approvals." (click)="requestApproval(e)"><span class="material-symbols-rounded">fact_check</span>Request approval to send</button>
-                </div>
-              </div>
-            </form>
-          </p-accordion-content></p-accordion-panel>
-        } @empty {
-          @if (!loaded()) {
-            <app-loading-skeleton variant="list" [rows]="3" label="Loading email drafts" />
-          } @else {
-          <div class="card empty"><span class="material-symbols-rounded">drafts</span>No drafts yet. Prepare an application or draft a recruiter email from a <a routerLink="/jobs">job</a>.</div>
-          }
-        }
-      </p-accordion>
-    </div>
-  `,
-  styles: [`
-    .title { display: flex; gap: .6rem; align-items: center; min-width: 0; }
-    .subject { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .desc { justify-content: flex-end; gap: .4rem; align-items: center; }
-    .danger { color: var(--ajh-danger); }
-    form { padding-top: .5rem; }
-  `]
+  templateUrl: './emails.component.html',
+  styleUrl: './emails.component.scss'
 })
 export class EmailsComponent {
   private readonly api = inject(ApiService);

@@ -18,7 +18,7 @@ const TONES: Record<string, string> = {
 @Component({
   selector: 'app-status-chip',
   standalone: true,
-  template: `<span class="chip {{ tone() }}">{{ label() }}</span>`
+  templateUrl: './status-chip.component.html'
 })
 export class StatusChipComponent {
   readonly status = input.required<string>();

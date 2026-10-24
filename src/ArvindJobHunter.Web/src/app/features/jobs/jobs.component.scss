@@ -1,0 +1,19 @@
+.actions-header { gap: .5rem; flex-wrap: wrap; }
+.import { align-items: center; margin-bottom: 1rem; }
+.form { display: grid; gap: .5rem 1rem; grid-template-columns: 1fr 1fr; }
+.form .span { grid-column: 1 / -1; }
+.toolbar { margin-bottom: 1rem; gap: 1rem; }
+.job { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1rem 1.25rem; align-items: center; }
+.job.dismissed { opacity: .65; }
+.job .body { display: grid; gap: .45rem; min-width: 0; }
+.job .head { display: flex; align-items: center; gap: .75rem; min-width: 0; }
+.job .title { font-weight: 600; font-size: 1rem; color: var(--ajh-text); text-decoration: none; }
+.job .title:hover { color: var(--ajh-primary); text-decoration: underline; }
+.job .chip .material-symbols-rounded { font-size: .85rem; }
+.job-actions { display: flex; align-items: center; gap: .4rem; flex-wrap: nowrap; }
+p-paginator { display: block; margin-top: 1rem; }
+@media (max-width: 900px) {
+  .job { grid-template-columns: auto minmax(0, 1fr); }
+  .job-actions { grid-column: 1 / -1; justify-content: flex-end; flex-wrap: wrap; }
+}
+@media (max-width: 720px) { .form { grid-template-columns: 1fr; } .job .head { flex-wrap: wrap; } }

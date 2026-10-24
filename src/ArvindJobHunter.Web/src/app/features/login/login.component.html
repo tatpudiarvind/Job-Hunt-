@@ -1,0 +1,49 @@
+<div class="wrap">
+  <aside class="hero">
+    <div class="logo"><span class="material-symbols-rounded">work</span></div>
+    <h1>Arvind AI Job Hunter</h1>
+    <p>An approval-first assistant that analyzes jobs, tailors your resume, and drafts outreach — and never acts externally without your explicit go-ahead.</p>
+    <ul>
+      <li><span class="material-symbols-rounded">lock</span> Runs locally. Single user. Your data stays on this machine.</li>
+      <li><span class="material-symbols-rounded">fact_check</span> Every side effect is proposed, approved, then executed by you.</li>
+      <li><span class="material-symbols-rounded">history</span> Complete audit trail of what the agent did and why.</li>
+    </ul>
+  </aside>
+  <section class="card panel">
+    @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
+    <header class="card-header">
+      <h2 class="card-heading">{{ configured() ? 'Welcome back' : 'No local account yet' }}</h2>
+      <p class="muted">{{ configured() ? 'Sign in to continue.' : 'Create your single local account first, then sign in.' }}</p>
+    </header>
+    <div class="card-body">
+      @if (!configured()) {
+        <div class="empty stack">
+          <div class="alert info"><span class="material-symbols-rounded">info</span><span>No local account is configured on this machine yet.</span></div>
+          <a pButton routerLink="/signup" class="submit">Open sign up</a>
+        </div>
+      } @else {
+        <form class="stack" (ngSubmit)="submit()">
+          <div class="field">
+            <label class="field-label" for="f-username">Username</label>
+            <span class="material-symbols-rounded field-prefix">person</span>
+            <input id="f-username" pInputText name="username" [(ngModel)]="username" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label class="field-label" for="f-password">Password</label>
+            <span class="material-symbols-rounded field-prefix">key</span>
+            <input id="f-password" pInputText class="password-input" name="password" [type]="show() ? 'text' : 'password'" [(ngModel)]="password" autocomplete="current-password" required minlength="12" />
+            <button pButton text rounded severity="secondary" data-icon class="field-suffix" type="button" (click)="show.set(!show())" [attr.aria-label]="show() ? 'Hide password' : 'Show password'">
+              <span class="material-symbols-rounded">{{ show() ? 'visibility_off' : 'visibility' }}</span>
+            </button>
+          </div>
+          @if (message()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ message() }}</span></div> }
+          <button pButton type="submit" class="submit" [disabled]="busy()">Sign in</button>
+        </form>
+      }
+    </div>
+    <div class="card-actions actions">
+      <a pButton text routerLink="/signup">Sign up</a>
+      <a pButton text routerLink="/forgot-password">Forgot password?</a>
+    </div>
+  </section>
+</div>

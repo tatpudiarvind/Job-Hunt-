@@ -1,0 +1,12 @@
+.wrap { min-height: 100vh; display: grid; place-items: center; padding: 2rem; background: linear-gradient(160deg, #f4f7fb 0%, #eef4ff 100%); }
+.panel { width: min(100%, 480px); overflow: hidden; }
+.stack { display: grid; gap: 1rem; }
+.actions { padding: 0 1rem 1rem; }
+.alert { display: flex; gap: .5rem; align-items: flex-start; padding: .85rem 1rem; border-radius: 12px; }
+.alert.info { background: #eef4ff; color: #1f3f84; }
+.alert.error { background: #fff1f2; color: #9f1239; }
+.submit { height: 46px; }
+:host ::ng-deep .password-input::-ms-reveal,
+:host ::ng-deep .password-input::-ms-clear { display: none; }
+:host ::ng-deep .password-input::-webkit-credentials-auto-fill-button,
+:host ::ng-deep .password-input::-webkit-textfield-decoration-container { margin-right: 0; }

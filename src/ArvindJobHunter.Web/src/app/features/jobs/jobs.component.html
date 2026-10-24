@@ -1,0 +1,151 @@
+  <div class="page">
+    <app-page-header eyebrow="Pipeline" title="Jobs" icon="work" subtitle="Showing only roles in the UK, Europe, Singapore and the UAE that explicitly mention visa sponsorship (change countries in Settings). Discover roles from supported public career sites, then review or start the approval-gated apply workflow.">
+      <div class="row actions-header">
+        <button pButton outlined [disabled]="busy()" (click)="discover()"><span class="material-symbols-rounded">travel_explore</span>Discover sponsored jobs</button>
+        <button pButton (click)="formOpen.set(!formOpen())"><span class="material-symbols-rounded">{{ formOpen() ? 'close' : 'add' }}</span>{{ formOpen() ? 'Close' : 'Add a job' }}</button>
+      </div>
+    </app-page-header>
+
+    @if (busy()) { <p-progressbar mode="indeterminate" styleClass="busy-bar" /> }
+    @if (error()) { <div class="alert error"><span class="material-symbols-rounded">error</span><span>{{ error() }}</span></div> }
+    @if (discoverySummary()) { <div class="alert info"><span class="material-symbols-rounded">info</span><span>{{ discoverySummary() }}</span></div> }
+    @if (discoveryNotes().length) {
+      <div class="alert warn"><span class="material-symbols-rounded">policy</span><div>@for (note of discoveryNotes(); track note) { <div>{{ note }}</div> }</div></div>
+    }
+
+    @if (formOpen()) {
+      <section class="card">
+        <div class="card-title"><span class="material-symbols-rounded">post_add</span>New job</div>
+        <div class="import row">
+          <div class="field">
+            <label class="field-label" for="f-importUrl">Import from URL</label>
+            <span class="material-symbols-rounded field-prefix">link</span>
+            <input id="f-importUrl" pInputText name="importUrl" [(ngModel)]="importUrl" placeholder="https://company.com/careers/role" />
+          </div>
+          <button pButton outlined type="button" [disabled]="busy() || !importUrl" (click)="importFromUrl()"><span class="material-symbols-rounded">download</span>Fetch &amp; prefill</button>
+          <button pButton outlined type="button" [disabled]="busy() || !importUrl" (click)="openInBrowser()"><span class="material-symbols-rounded">open_in_browser</span>Open in browser</button>
+          <button pButton outlined type="button" [disabled]="busy()" (click)="captureFromBrowser()"><span class="material-symbols-rounded">screen_share</span>Use page open in browser</button>
+        </div>
+        <details class="searches" (toggle)="loadSearches()">
+          <summary>Saved searches</summary>
+          <p class="muted small">Runs only when you click Run: the search opens in the visible browser, then "List jobs on page" reads that one page. Pick a job to preview it.</p>
+          @for (s of searches(); track s.url; let i = $index) {
+            <div class="row wrap">
+              <span class="grow small"><b>{{ s.name }}</b> · {{ s.url }}</span>
+              <button pButton text type="button" [disabled]="busy()" (click)="runSearch(s.url)">Run</button>
+              <button pButton text type="button" [disabled]="busy()" (click)="removeSearch(i)">Remove</button>
+            </div>
+          }
+          <div class="row wrap">
+            <input pInputText name="searchName" [(ngModel)]="newSearch.name" placeholder="Name, e.g. .NET Berlin" />
+            <input pInputText class="grow" name="searchUrl" [(ngModel)]="newSearch.url" placeholder="Search results URL" />
+            <button pButton outlined type="button" [disabled]="busy() || !newSearch.name || !newSearch.url" (click)="addSearch()">Save search</button>
+            <button pButton outlined type="button" [disabled]="busy()" (click)="listLinks()"><span class="material-symbols-rounded">list</span>List jobs on page</button>
+          </div>
+          @for (l of links(); track l.url) {
+            <div class="row wrap"><span class="grow small">{{ l.text }}</span><button pButton text type="button" [disabled]="busy()" (click)="pickLink(l.url)">Preview</button></div>
+          }
+        </details>
+        @if (warnings().length) {
+          <div class="alert warn"><span class="material-symbols-rounded">info</span><div>@for (w of warnings(); track w) { <div>{{ w }}</div> }</div></div>
+        }
+        <form class="form" (ngSubmit)="create()">
+          <div class="field"><label class="field-label" for="f-title">Title</label><input id="f-title" pInputText name="title" [(ngModel)]="form.title" required /></div>
+          <div class="field"><label class="field-label" for="f-company">Company</label><input id="f-company" pInputText name="company" [(ngModel)]="form.company" required /></div>
+          <div class="field"><label class="field-label" for="f-location">Location</label><input id="f-location" pInputText name="location" [(ngModel)]="form.location" /></div>
+          <div class="field"><label class="field-label" for="f-source">Source</label><input id="f-source" pInputText name="source" [(ngModel)]="form.source" placeholder="Manual, LinkedIn, referral…" /></div>
+          <div class="field"><label class="field-label" for="f-url">Posting URL</label><input id="f-url" pInputText name="url" [(ngModel)]="form.url" /></div>
+          <div class="field"><label class="field-label" for="f-description">Job description</label><textarea id="f-description" pTextarea rows="10" name="description" [(ngModel)]="form.description" required></textarea></div>
+          <div class="row end span">
+            <button pButton text type="button" (click)="reset()">Clear</button>
+            <button pButton type="submit" [disabled]="busy() || !form.title || !form.company || !form.description">Save job</button>
+          </div>
+        </form>
+      </section>
+    }
+
+    @if (demand(); as d) {
+      <section class="card">
+        <p-accordion class="demand"><p-accordion-panel value="demand">
+          <p-accordion-header>
+            <span class="panel-title"><span class="material-symbols-rounded">insights</span>&nbsp;Skills sponsored employers ask for</span>
+            <span class="panel-desc">{{ d.postingsMatchingResume }} of {{ d.sponsoredPostings }} sponsored posting(s) match at least 60% of your resume skills</span>
+          </p-accordion-header><p-accordion-content>
+          @if (!d.sponsoredPostings) {
+            <p class="muted">No sponsored postings in your target countries yet. Run <b>Discover sponsored jobs</b> to collect some.</p>
+          } @else {
+            <p class="muted small">Counted from the {{ d.sponsoredPostings }} real posting(s) stored here, not market-wide data. Red skills are asked for but missing from your verified resume skills.</p>
+            <div class="chips">
+              @for (s of d.skills.slice(0, 25); track s.skill) {
+                <span class="chip" [class.have]="s.onResume" [class.gap]="!s.onResume" [pTooltip]="s.postings + ' posting(s)'">{{ s.skill }} · {{ s.percentOfPostings }}%</span>
+              }
+            </div>
+            @for (c of d.countries; track c.country) {
+              <div class="country"><b>{{ c.country }}</b> <span class="muted small">({{ c.postings }})</span>
+                @for (s of c.topSkills; track s.skill) { <span class="chip small" [class.have]="s.onResume" [class.gap]="!s.onResume">{{ s.skill }}</span> }
+              </div>
+            }
+          }
+        </p-accordion-content></p-accordion-panel></p-accordion>
+      </section>
+    }
+
+    <section class="card">
+      <div class="row between toolbar">
+        <div class="search-box">
+          <span class="material-symbols-rounded">search</span>
+          <input pInputText aria-label="Search jobs" placeholder="Search title or company" [ngModel]="query()" (ngModelChange)="query.set($event); pageIndex.set(0)" />
+        </div>
+        <div class="row">
+          <span class="muted small">{{ visible().length }} result{{ visible().length === 1 ? '' : 's' }}</span>
+          <p-selectbutton [options]="filterOptions()" [ngModel]="filter()" (ngModelChange)="filter.set($event); pageIndex.set(0)" optionLabel="label" optionValue="value" [allowEmpty]="false" aria-label="Filter jobs" />
+        </div>
+      </div>
+
+<div class="list">
+  @for (j of paged(); track j.id) {
+	<article class="list-card job" [class.dismissed]="j.status === 'DISMISSED'">
+	  <div class="ring" [class.mid]="(j.match?.score ?? 0) >= 40 && (j.match?.score ?? 0) < 70" [class.low]="j.match && j.match.score < 40" [class.none]="!j.match" [style.--value]="j.match?.score ?? 0" [pTooltip]="j.match ? 'Resume match' : 'Not analyzed yet'">
+		<span>{{ j.match ? j.match.score + '%' : '—' }}</span>
+	  </div>
+	  <div class="body">
+		<div class="head">
+		  <a class="title ellipsis" [routerLink]="['/jobs', j.id]" [title]="j.title">{{ j.title }}</a>
+		  <app-status-chip [status]="j.status" />
+		</div>
+		<div class="meta">
+		  <span><span class="material-symbols-rounded">apartment</span>{{ j.company }}</span>
+		  @if (j.location) {
+			<span [pTooltip]="locations(j.location).length > 1 ? j.location : ''"><span class="material-symbols-rounded">location_on</span>{{ locations(j.location)[0] }}@if (locations(j.location).length > 1) { <span class="chip more">+{{ locations(j.location).length - 1 }}</span> }</span>
+		  }
+		  <span><span class="material-symbols-rounded">public</span>@if (j.url) { <a [href]="j.url" target="_blank" rel="noopener noreferrer">{{ j.source }}</a> } @else { {{ j.source }} }</span>
+		  <span><span class="material-symbols-rounded">calendar_today</span>{{ j.createdAt | date:'mediumDate' }}</span>
+		</div>
+		@if (j.match; as m) {
+		  <div class="chips">
+			@for (s of m.matchedSkills.slice(0, 4); track s) { <span class="chip success"><span class="material-symbols-rounded">check</span>{{ s }}</span> }
+			@for (s of m.missingSkills.slice(0, 2); track s) { <span class="chip danger" pTooltip="Missing from your resume">{{ s }}</span> }
+			@if (m.matchedSkills.length + m.missingSkills.length > 6) { <span class="chip more">+{{ m.matchedSkills.length + m.missingSkills.length - 6 }} more</span> }
+		  </div>
+		}
+	  </div>
+	  <div class="job-actions">
+		@if (j.status !== 'DISMISSED') {
+		  <button pButton size="small" [disabled]="busy()" (click)="apply(j)"><span class="material-symbols-rounded">send</span>Apply</button>
+		  <button pButton size="small" outlined [disabled]="busy()" (click)="analyze(j)"><span class="material-symbols-rounded">auto_awesome</span>{{ j.analysis ? 'Re-analyze' : 'Analyze' }}</button>
+		  <button pButton text rounded severity="secondary" data-icon pTooltip="Dismiss" aria-label="Dismiss" [disabled]="busy()" (click)="dismiss(j)"><span class="material-symbols-rounded">visibility_off</span></button>
+		}
+		<a pButton text rounded severity="secondary" data-icon pTooltip="Open details" aria-label="Open details" [routerLink]="['/jobs', j.id]"><span class="material-symbols-rounded">chevron_right</span></a>
+	  </div>
+	</article>
+  } @empty {
+	@if (!loaded()) {
+	  <app-loading-skeleton variant="table" [rows]="6" [columns]="6" label="Loading jobs" />
+	} @else {
+	  <div class="empty"><span class="material-symbols-rounded">work_off</span>{{ jobs().length ? 'No jobs match this filter.' : 'No jobs yet — discover sponsored roles or add one manually.' }}</div>
+	}
+  }
+</div>
+<p-paginator [totalRecords]="visible().length" [first]="pageIndex() * pageSize()" [rows]="pageSize()" [rowsPerPageOptions]="[10, 25, 50, 100]" (onPageChange)="onPage($event)" [showFirstLastIcon]="true" />
+ </section>
+  </div>
